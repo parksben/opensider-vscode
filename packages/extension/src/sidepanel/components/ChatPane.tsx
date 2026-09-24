@@ -20,10 +20,15 @@ import {
 } from "../composer-clipboard";
 import {
   MAX_DROP_FILES,
+  NO_DRAG,
   collectDrop,
+  dragCarriesFiles,
   emptySkips,
+  nextDragOverlay,
   pathsFromDrop,
   walkEntry,
+  type DragOverlay,
+  type DragSignal,
   type DropPlan,
   type DroppedFile,
 } from "../file-drop";
@@ -588,31 +593,53 @@ export function ChatPane({
 
   // The whole panel accepts files, not just the composer: dropping one used to hand it to
   // the browser, which opened it and navigated away from the conversation.
+  //
+  // Everything here runs in the capture phase and stops the event there, which is what
+  // makes a drop arrive at all under VS Code. The webview host (`pre/index.html`) keeps its
+  // own `dragenter`/`dragover` listeners on this same window, and each one reports the drag
+  // back to the workbench, which answers by setting `pointer-events: none` on the frame we
+  // live in. One `dragover` was enough: the panel went deaf for the rest of the drag, so the
+  // overlay never cleared and the drop landed in the workbench instead of here. Capturing
+  // first means those listeners never run and the frame stays live.
   useEffect(() => {
-    const hasFiles = (event: DragEvent) =>
-      Array.from(event.dataTransfer?.types ?? []).includes("Files");
-    let depth = 0;
-    const onEnter = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
+    let overlay = NO_DRAG;
+    let watchdog = 0;
+    const apply = (next: DragOverlay) => {
+      const was = overlay.visible;
+      overlay = next;
+      if (next.visible === was) return;
+      setDropping(next.visible);
+      // The watchdog only has to run while there is a claim to retire.
+      window.clearInterval(watchdog);
+      watchdog = next.visible
+        ? window.setInterval(() => apply(nextDragOverlay(overlay, { kind: "tick", at: Date.now() })), 200)
+        : 0;
+    };
+    const signal = (event: DragSignal) => apply(nextDragOverlay(overlay, event));
+    const claim = (event: DragEvent): boolean => {
+      if (!dragCarriesFiles(Array.from(event.dataTransfer?.types ?? []))) return false;
       event.preventDefault();
-      depth += 1;
-      setDropping(true);
+      event.stopPropagation();
+      return true;
+    };
+
+    const onEnter = (event: DragEvent) => {
+      if (claim(event)) signal({ kind: "over", at: Date.now() });
     };
     const onOver = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
-      event.preventDefault();
+      if (!claim(event)) return;
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      signal({ kind: "over", at: Date.now() });
     };
+    // `dragleave` fires for every child boundary the pointer crosses, so it cannot say
+    // whether the drag really left. Only the drag going quiet can, which is the watchdog's
+    // job - a leave just stops renewing the claim.
     const onLeave = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
-      depth = Math.max(0, depth - 1);
-      if (depth === 0) setDropping(false);
+      claim(event);
     };
     const onDrop = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
-      event.preventDefault();
-      depth = 0;
-      setDropping(false);
+      if (!claim(event)) return;
+      signal({ kind: "exit" });
       // A drag out of the explorer carries real paths: attach those as-is, no byte copy.
       const paths = pathsFromDrop(event.dataTransfer);
       if (paths.length > 0) {
@@ -640,15 +667,29 @@ export function ChatPane({
         await addDroppedFiles({ files, skipped });
       })();
     };
-    window.addEventListener("dragenter", onEnter);
-    window.addEventListener("dragover", onOver);
-    window.addEventListener("dragleave", onLeave);
-    window.addEventListener("drop", onDrop);
+    // The ways a drag can end without a `drop` ever reaching us.
+    const onDragEnd = () => signal({ kind: "exit" });
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") signal({ kind: "exit" });
+    };
+    const onBlur = () => signal({ kind: "exit" });
+
+    window.addEventListener("dragenter", onEnter, true);
+    window.addEventListener("dragover", onOver, true);
+    window.addEventListener("dragleave", onLeave, true);
+    window.addEventListener("drop", onDrop, true);
+    window.addEventListener("dragend", onDragEnd, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("blur", onBlur);
     return () => {
-      window.removeEventListener("dragenter", onEnter);
-      window.removeEventListener("dragover", onOver);
-      window.removeEventListener("dragleave", onLeave);
-      window.removeEventListener("drop", onDrop);
+      window.clearInterval(watchdog);
+      window.removeEventListener("dragenter", onEnter, true);
+      window.removeEventListener("dragover", onOver, true);
+      window.removeEventListener("dragleave", onLeave, true);
+      window.removeEventListener("drop", onDrop, true);
+      window.removeEventListener("dragend", onDragEnd, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("blur", onBlur);
     };
   }, [onUploadFiles]);
 

@@ -19,6 +19,69 @@ export const MAX_DROP_FILES = 100;
 /** How long a single `entry.file()` may take before we treat the entry as unreadable. */
 export const ENTRY_FILE_TIMEOUT_MS = 3_000;
 
+/**
+ * Types that mean "this drag is carrying files".
+ *
+ * `Files` is what a drag out of Finder looks like. The rest are what VS Code puts on a
+ * drag out of its own explorer or off an editor tab: those carry real paths and no bytes,
+ * and `Files` is not among them.
+ */
+const FILE_DRAG_TYPES = [
+  "Files",
+  "text/uri-list",
+  // VS Code's own list: unlike `text/uri-list` it holds every dragged resource, not just
+  // the first one.
+  "application/vnd.code.uri-list",
+  "ResourceURLs",
+] as const;
+
+/** The path-carrying types, most complete first. */
+const PATH_DRAG_TYPES = ["application/vnd.code.uri-list", "text/uri-list"] as const;
+
+export function dragCarriesFiles(types: readonly string[]): boolean {
+  return FILE_DRAG_TYPES.some((type) => types.includes(type));
+}
+
+/**
+ * Whether the panel is showing its "drop here" overlay, and when that claim goes stale.
+ *
+ * There is deliberately no enter/leave depth counter. `dragenter` and `dragleave` fire once
+ * per element boundary the pointer crosses, so a counter drifts the moment one of them is
+ * missed - and in a webview they *are* missed, because the workbench can cut the frame off
+ * mid-drag. A drag that is still over the panel keeps saying so (the HTML drag model fires
+ * `dragover` about every 350ms even while the pointer is still), so the overlay can simply
+ * expire unless something renews it. Nothing can latch: the worst case is that it lingers
+ * for one deadline after a drag ends somewhere we never hear about.
+ */
+export type DragOverlay = {
+  visible: boolean;
+  /** Timestamp after which an unrenewed claim is dropped. */
+  until: number;
+};
+
+export const NO_DRAG: DragOverlay = { visible: false, until: 0 };
+
+/**
+ * Twice the 350ms the drag model uses to re-fire `dragover` on a stationary pointer, so a
+ * held-still drag never blinks, plus room for a slow frame.
+ */
+export const DRAG_IDLE_MS = 800;
+
+export type DragSignal =
+  /** A `dragenter`/`dragover` carrying files: the drag is over us right now. */
+  | { kind: "over"; at: number }
+  /** The drag is definitively finished here: dropped, cancelled, or the panel lost focus. */
+  | { kind: "exit" }
+  /** The watchdog: retires a claim nothing renewed. */
+  | { kind: "tick"; at: number };
+
+export function nextDragOverlay(state: DragOverlay, signal: DragSignal): DragOverlay {
+  if (signal.kind === "exit") return NO_DRAG;
+  if (signal.kind === "over") return { visible: true, until: signal.at + DRAG_IDLE_MS };
+  if (!state.visible) return state;
+  return signal.at >= state.until ? NO_DRAG : state;
+}
+
 export type DroppedFile = {
   /** File name, or the path inside the dropped folder when `dir` is set. */
   name: string;
@@ -77,28 +140,47 @@ export async function fileToBase64(file: File): Promise<string | undefined> {
 /**
  * Paths carried by a drag out of the VS Code explorer (or a file manager).
  *
- * These files already live on disk, so they can be attached by path with no copy. Only
- * `text/uri-list` is read during the event; everything else falls through to the byte path.
+ * These files already live on disk, so they can be attached by path with no copy; a drag
+ * out of Finder carries no path at all and falls through to the byte path. Pure so the
+ * choice between the two can be tested without a DataTransfer: `read` is the lookup.
  */
-export function pathsFromDrop(dataTransfer: DataTransfer | null): string[] {
-  const raw = (() => {
-    try {
-      return dataTransfer?.getData("text/uri-list") ?? "";
-    } catch {
-      return "";
-    }
-  })();
+export function pathsFromTypes(types: readonly string[], read: (type: string) => string): string[] {
+  for (const type of PATH_DRAG_TYPES) {
+    if (!types.includes(type)) continue;
+    const paths = parseUriList(read(type));
+    // A type that is present but holds nothing usable is not a reason to stop looking.
+    if (paths.length > 0) return paths;
+  }
+  return [];
+}
+
+function parseUriList(raw: string): string[] {
   const out: string[] = [];
   for (const line of raw.split(/\r?\n/)) {
     const value = line.trim();
-    if (!value || value.startsWith("#") || !value.startsWith("file:")) continue;
+    // `#` opens a comment in the uri-list format, and a non-`file:` URI has no path to give.
+    if (!value || value.startsWith("#") || !/^file:/i.test(value)) continue;
     try {
-      out.push(decodeURIComponent(new URL(value).pathname));
+      const { pathname, hostname } = new URL(value);
+      const path = decodeURIComponent(pathname);
+      if (path) out.push(hostname ? `//${hostname}${path}` : path);
     } catch {
       // not a usable URL; the byte path will pick the file up instead
     }
   }
   return out;
+}
+
+/** `pathsFromTypes` against a live event. Must be called while the event is being handled. */
+export function pathsFromDrop(dataTransfer: DataTransfer | null): string[] {
+  if (!dataTransfer) return [];
+  return pathsFromTypes(Array.from(dataTransfer.types ?? []), (type) => {
+    try {
+      return dataTransfer.getData(type) ?? "";
+    } catch {
+      return "";
+    }
+  });
 }
 
 /**
