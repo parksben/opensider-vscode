@@ -1,0 +1,86 @@
+{
+  "name": "opensider-vscode",
+  "displayName": "OpenSider for VSCode",
+  "description": "Chat with local ACP agents (Claude Code, Codex, Cursor, OpenCode and more) inside the current VS Code workspace.",
+  "version": "0.1.0",
+  "publisher": "opensider",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Chat",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "opensider-vscode",
+          "title": "OpenSider",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "opensider-vscode": [
+        {
+          "type": "webview",
+          "id": "opensider-vscode.chat",
+          "name": "OpenSider"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "opensider-vscode.addSelection",
+        "title": "Add Selection to OpenSider",
+        "category": "OpenSider"
+      },
+      {
+        "command": "opensider-vscode.focus",
+        "title": "Open OpenSider",
+        "category": "OpenSider"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "opensider-vscode.addSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@20"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs && vite build --config vite.webview.config.ts",
+    "vscode:prepublish": "node esbuild.mjs && vite build --config vite.webview.config.ts"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.12",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@types/vscode": "^1.85.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.9",
+    "tailwindcss": "^4.1.12",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "lucide-react": "^0.542.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
+    "react-zoom-pan-pinch": "^4.1.1",
+    "remark-gfm": "^4.0.1"
+  }
+}

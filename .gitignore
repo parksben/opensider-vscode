@@ -1,0 +1,8 @@
+node_modules
+dist
+*.vsix
+.DS_Store
+
+# 宿主二进制按平台构建，不入库
+packages/extension/bin/opensider-vscode-host
+packages/extension/bin/opensider-vscode-host.exe

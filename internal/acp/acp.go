@@ -1,0 +1,650 @@
+package acp
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"opensidervscode/internal/addonenv"
+	"opensidervscode/internal/detect"
+	"opensidervscode/internal/log"
+	"opensidervscode/internal/paths"
+	"opensidervscode/internal/protocol"
+)
+
+type Launch struct {
+	Command string
+	Args    []string
+	Cwd     string
+	Env     map[string]string
+	Auth    detect.AuthKind
+	Profile detect.AgentProfile
+}
+
+type SessionOpen struct {
+	SessionID     string
+	Replay        bool
+	Created       bool
+	Forked        bool
+	ConfigOptions any
+	Models        any
+}
+
+type Handlers struct {
+	OnUpdate     func(update map[string]any, sessionID string)
+	OnPermission func(id int, params map[string]any, sessionID string)
+	OnCursor     func(id *int, method string, params map[string]any, sessionID string)
+	// OnTerminal 处理 ACP 的 terminal/* 请求。只有 VS Code 扩展能开终端，
+	// 所以宿主只做转发：把请求交出去，回执由调用方用 Respond 送回 Agent。
+	OnTerminal func(id int, method string, params map[string]any, sessionID string)
+}
+
+type rpcWaiter struct {
+	ch chan rpcResult
+}
+
+type rpcResult struct {
+	result any
+	err    error
+}
+
+type Client struct {
+	launch         Launch
+	handlers       Handlers
+	mu             sync.Mutex
+	cmd            *exec.Cmd
+	stdin          io.WriteCloser
+	nextID         atomic.Int64
+	pending        map[int]rpcWaiter
+	session        string
+	policy         protocol.AgentPolicy
+	turnHadContent bool
+	configOptions  any
+	sessionModes   any
+	// modeCurrent 是 Agent 自己报的当前模式（`current_mode_update`）。它盖在发现
+	// 出来的结果上：opencode 这类把模式放在 configOptions 里的家，光看 currentValue
+	// 会停在会话建立那一刻的值。
+	modeCurrent string
+	// pinnedMode 是用户显式选过的模式（空串=没选）。选过就不再让权限档覆盖它。
+	pinnedMode string
+	// pinnedOptions 是用户显式选过的其它配置项值（configId → value），例如推理档位。
+	pinnedOptions map[string]string
+	sweepStop     func()
+}
+
+func New(launch Launch, handlers Handlers) *Client {
+	c := &Client{
+		launch:   launch,
+		handlers: handlers,
+		pending:  map[int]rpcWaiter{},
+		policy:   protocol.PolicyAsk,
+	}
+	c.nextID.Store(1)
+	return c
+}
+
+func (c *Client) SetPolicy(policy protocol.AgentPolicy) {
+	c.mu.Lock()
+	c.policy = policy
+	sessionID := c.session
+	c.mu.Unlock()
+	if sessionID != "" {
+		go c.applySessionModes()
+	}
+}
+
+func (c *Client) GetSessionID() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.session
+}
+
+func (c *Client) SetCwd(dir string) {
+	c.mu.Lock()
+	c.launch.Cwd = dir
+	c.mu.Unlock()
+}
+
+func (c *Client) Start() error {
+	if _, err := os.Stat(c.launch.Command); err != nil {
+		return fmt.Errorf("%s CLI not found at %s. %s", c.launch.Profile.Name, c.launch.Command, c.launch.Profile.LoginHint)
+	}
+	cmd := exec.Command(c.launch.Command, c.launch.Args...)
+	cmd.Dir = c.launch.Cwd
+	env := os.Environ()
+	env = setEnv(env, "HOME", paths.Home())
+	env = setEnv(env, "PATH", paths.AgentPathEnv(c.launch.Command))
+	tmpdir, stop := addonenv.Prepare(c.launch.Profile.ID, c.launch.Command)
+	c.mu.Lock()
+	if c.sweepStop != nil {
+		c.sweepStop()
+	}
+	c.sweepStop = stop
+	c.mu.Unlock()
+	if tmpdir != "" {
+		env = setEnv(env, "TMPDIR", tmpdir)
+		env = setEnv(env, "TMP", tmpdir)
+		env = setEnv(env, "TEMP", tmpdir)
+		env = setEnv(env, "BUN_TMPDIR", tmpdir)
+	}
+	for k, v := range c.launch.Env {
+		env = setEnv(env, k, v)
+	}
+	cmd.Env = env
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.cmd = cmd
+	c.stdin = stdin
+	c.mu.Unlock()
+
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line != "" {
+				log.Log("agent stderr: " + line)
+			}
+		}
+	}()
+	go func() {
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" {
+				continue
+			}
+			var msg map[string]any
+			if err := json.Unmarshal([]byte(line), &msg); err != nil {
+				log.Log("unparsable agent line: " + trim(line, 200))
+				continue
+			}
+			c.handleMessage(msg)
+		}
+		_ = cmd.Wait()
+		log.Log("agent exited")
+		c.failAll(errors.New("agent process exited"))
+	}()
+	return nil
+}
+
+func (c *Client) Initialize() error {
+	meta := map[string]any{"parameterizedModelPicker": true}
+	_, err := c.request("initialize", map[string]any{
+		"protocolVersion": 1,
+		"clientCapabilities": map[string]any{
+			"fs": map[string]any{"readTextFile": false, "writeTextFile": false},
+			// 开着：命令会经 terminal/* 交给 VS Code 的真实终端执行（见 internal/host）。
+			"terminal": true,
+			"session":  map[string]any{"configOptions": map[string]any{"boolean": map[string]any{}}},
+			"_meta":    meta,
+		},
+		"clientInfo": map[string]any{"name": "opensider-vscode", "version": "0.1.0"},
+	})
+	if err != nil {
+		return err
+	}
+	if c.launch.Auth.Type == "method" {
+		if _, err := c.request("authenticate", map[string]any{"methodId": c.launch.Auth.MethodID}); err != nil {
+			return fmt.Errorf("%s (%v)", c.launch.Profile.LoginHint, err)
+		}
+	}
+	return nil
+}
+
+func (c *Client) CreateSession() (SessionOpen, error) {
+	result, err := c.request("session/new", map[string]any{
+		"cwd":        c.launch.Cwd,
+		"mcpServers": []any{},
+	})
+	if err != nil {
+		return SessionOpen{}, err
+	}
+	obj, _ := result.(map[string]any)
+	sessionID := str(obj["sessionId"])
+	c.mu.Lock()
+	c.session = sessionID
+	c.mu.Unlock()
+	c.rememberSessionOptions(obj)
+	c.applySessionSettings()
+	return SessionOpen{
+		SessionID:     sessionID,
+		Replay:        false,
+		Created:       true,
+		Forked:        false,
+		ConfigOptions: obj["configOptions"],
+		Models:        obj["models"],
+	}, nil
+}
+
+func (c *Client) UseSession(existingID string) (SessionOpen, error) {
+	if c.GetSessionID() == existingID {
+		return SessionOpen{SessionID: existingID, Replay: true}, nil
+	}
+	result, err := c.request("session/load", map[string]any{
+		"sessionId":  existingID,
+		"cwd":        c.launch.Cwd,
+		"mcpServers": []any{},
+	})
+	if err != nil {
+		log.Log("session/load failed, creating new: " + err.Error())
+		return c.CreateSession()
+	}
+	obj, _ := result.(map[string]any)
+	c.mu.Lock()
+	c.session = existingID
+	c.mu.Unlock()
+	c.rememberSessionOptions(obj)
+	c.applySessionSettings()
+	return SessionOpen{
+		SessionID:     existingID,
+		Replay:        true,
+		Created:       false,
+		Forked:        false,
+		ConfigOptions: obj["configOptions"],
+		Models:        obj["models"],
+	}, nil
+}
+
+func (c *Client) ForkSession(existingID string) (SessionOpen, error) {
+	result, err := c.request("session/fork", map[string]any{
+		"sessionId":  existingID,
+		"cwd":        c.launch.Cwd,
+		"mcpServers": []any{},
+	})
+	if err != nil {
+		log.Log("session/fork failed, creating new: " + err.Error())
+		return c.CreateSession()
+	}
+	obj, _ := result.(map[string]any)
+	sessionID := str(obj["sessionId"])
+	c.mu.Lock()
+	c.session = sessionID
+	c.mu.Unlock()
+	c.rememberSessionOptions(obj)
+	c.applySessionSettings()
+	return SessionOpen{
+		SessionID:     sessionID,
+		Replay:        false,
+		Created:       true,
+		Forked:        true,
+		ConfigOptions: obj["configOptions"],
+		Models:        obj["models"],
+	}, nil
+}
+
+func (c *Client) SetModel(modelID, configID string) (any, error) {
+	if c.GetSessionID() == "" {
+		return nil, errors.New("no session")
+	}
+	if configID == "" {
+		configID = "model"
+	}
+	result, err := c.request("session/set_config_option", map[string]any{
+		"sessionId": c.GetSessionID(),
+		"configId":  configID,
+		"value":     modelID,
+	})
+	if err != nil {
+		log.Log("session/set_config_option failed, trying session/set_model: " + err.Error())
+		return c.request("session/set_model", map[string]any{
+			"sessionId": c.GetSessionID(),
+			"modelId":   modelID,
+		})
+	}
+	return result, nil
+}
+
+func (c *Client) Prompt(text string) (string, error) {
+	if c.GetSessionID() == "" {
+		return "", errors.New("no session")
+	}
+	c.mu.Lock()
+	c.turnHadContent = false
+	c.mu.Unlock()
+	result, err := c.request("session/prompt", map[string]any{
+		"sessionId": c.GetSessionID(),
+		"prompt":    []any{map[string]any{"type": "text", "text": text}},
+	})
+	if err != nil {
+		if IsBenignStreamClose(err) && c.sawTurnContent() {
+			log.Log("session/prompt stream-close after content; treating as end_turn")
+			return "end_turn", nil
+		}
+		return "", c.wrapAgentError(err)
+	}
+	obj, _ := result.(map[string]any)
+	stop := str(obj["stopReason"])
+	if stop == "" {
+		stop = "end_turn"
+	}
+	return stop, nil
+}
+
+func (c *Client) Cancel() {
+	session := c.GetSessionID()
+	c.mu.Lock()
+	running := c.cmd != nil
+	c.mu.Unlock()
+	if session == "" || !running {
+		return
+	}
+	c.notify("session/cancel", map[string]any{"sessionId": session})
+}
+
+func (c *Client) Respond(id int, result any) {
+	c.write(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+}
+
+// RespondError 回一个 JSON-RPC 错误。终端请求在扩展侧失败时走这条路，
+// 空结果会被 Agent 当成成功。
+func (c *Client) RespondError(id int, message string) {
+	c.write(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"error":   map[string]any{"code": -32603, "message": message},
+	})
+}
+
+func (c *Client) Stop() {
+	c.mu.Lock()
+	stdin := c.stdin
+	cmd := c.cmd
+	stop := c.sweepStop
+	c.sweepStop = nil
+	c.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
+	if stdin != nil {
+		_ = stdin.Close()
+	}
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	c.failAll(errors.New("agent stopped"))
+}
+
+func (c *Client) wrapAgentError(err error) error {
+	if err == nil {
+		return nil
+	}
+	text := err.Error()
+	lower := strings.ToLower(text)
+	if c.launch.Profile.LoginHint == "" {
+		return err
+	}
+	if strings.Contains(lower, "authentication") || (strings.Contains(lower, "api key") && strings.Contains(lower, "invalid")) {
+		return fmt.Errorf("%s %s", text, c.launch.Profile.LoginHint)
+	}
+	return err
+}
+
+func (c *Client) handleMessage(msg map[string]any) {
+	if id, ok := asInt(msg["id"]); ok {
+		if _, hasResult := msg["result"]; hasResult || msg["error"] != nil {
+			c.mu.Lock()
+			waiter, found := c.pending[id]
+			if found {
+				delete(c.pending, id)
+			}
+			c.mu.Unlock()
+			if !found {
+				return
+			}
+			if msg["error"] != nil {
+				raw, _ := json.Marshal(msg["error"])
+				waiter.ch <- rpcResult{err: errors.New(string(raw))}
+			} else {
+				waiter.ch <- rpcResult{result: msg["result"]}
+			}
+			return
+		}
+	}
+
+	method, _ := msg["method"].(string)
+	params, _ := msg["params"].(map[string]any)
+	if params == nil {
+		params = map[string]any{}
+	}
+	sessionID := str(params["sessionId"])
+	if sessionID == "" {
+		sessionID = c.GetSessionID()
+	}
+
+	if method == "session/update" {
+		update, _ := params["update"].(map[string]any)
+		if update == nil {
+			update = params
+		}
+		if dropBenignStreamCloseUpdate(update) {
+			log.Log("dropped Cursor stream-close update")
+			return
+		}
+		// 先记下 Agent 自己报的模式 / 配置变化，再往外发：侧栏拿到的快照必须是新的。
+		c.noteModeUpdate(update)
+		c.noteTurnUpdate(update)
+		if c.handlers.OnUpdate != nil {
+			c.handlers.OnUpdate(update, sessionID)
+		}
+		return
+	}
+
+	if method == "session/request_permission" {
+		if id, ok := asInt(msg["id"]); ok && c.handlers.OnPermission != nil {
+			c.handlers.OnPermission(id, params, sessionID)
+		}
+		return
+	}
+
+	// terminal/create|output|wait_for_exit|kill|release：交给扩展去开真正的 VS Code 终端。
+	// 没有处理器就不能假装成功——回一个错误，Agent 会退回自己跑命令。
+	if strings.HasPrefix(method, "terminal/") {
+		id, ok := asInt(msg["id"])
+		if !ok {
+			return
+		}
+		if c.handlers.OnTerminal == nil {
+			c.write(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      id,
+				"error":   map[string]any{"code": -32601, "message": "terminal is not available"},
+			})
+			return
+		}
+		c.handlers.OnTerminal(id, method, params, sessionID)
+		return
+	}
+
+	for _, prefix := range c.launch.Profile.VendorPrefixes {
+		if strings.HasPrefix(method, prefix) {
+			var idPtr *int
+			if id, ok := asInt(msg["id"]); ok {
+				idPtr = &id
+			}
+			if c.handlers.OnCursor != nil {
+				c.handlers.OnCursor(idPtr, method, params, sessionID)
+			}
+			return
+		}
+	}
+
+	if id, ok := asInt(msg["id"]); ok {
+		c.write(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{}})
+	}
+}
+
+func (c *Client) request(method string, params any) (any, error) {
+	id := int(c.nextID.Add(1) - 1)
+	ch := make(chan rpcResult, 1)
+	c.mu.Lock()
+	c.pending[id] = rpcWaiter{ch: ch}
+	c.mu.Unlock()
+	if err := c.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
+		return nil, err
+	}
+	res := <-ch
+	return res.result, res.err
+}
+
+func (c *Client) notify(method string, params any) {
+	_ = c.write(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
+}
+
+func (c *Client) write(msg any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stdin == nil {
+		return errors.New("agent is not running")
+	}
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	_, err = c.stdin.Write(append(raw, '\n'))
+	return err
+}
+
+func (c *Client) sawTurnContent() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.turnHadContent
+}
+
+func (c *Client) noteTurnUpdate(update map[string]any) {
+	if !updateHasTurnContent(update) {
+		return
+	}
+	c.mu.Lock()
+	c.turnHadContent = true
+	c.mu.Unlock()
+}
+
+func updateText(update map[string]any) (string, bool) {
+	switch content := update["content"].(type) {
+	case string:
+		return content, true
+	case map[string]any:
+		return str(content["text"]), true
+	default:
+		return "", false
+	}
+}
+
+func setUpdateText(update map[string]any, text string) {
+	switch content := update["content"].(type) {
+	case map[string]any:
+		content["text"] = text
+	default:
+		update["content"] = map[string]any{"type": "text", "text": text}
+	}
+}
+
+func dropBenignStreamCloseUpdate(update map[string]any) bool {
+	kind := str(update["sessionUpdate"])
+	if kind != "agent_message_chunk" && kind != "agent_thought_chunk" {
+		return false
+	}
+	text, ok := updateText(update)
+	if !ok || !IsBenignStreamCloseText(text) {
+		return false
+	}
+	if IsOnlyBenignStreamClose(text) {
+		return true
+	}
+	cleaned := StripBenignStreamClose(text)
+	if cleaned == text {
+		return false
+	}
+	if strings.TrimSpace(cleaned) == "" {
+		return true
+	}
+	setUpdateText(update, cleaned)
+	return false
+}
+
+func updateHasTurnContent(update map[string]any) bool {
+	switch str(update["sessionUpdate"]) {
+	case "agent_message_chunk", "agent_thought_chunk":
+		text, _ := updateText(update)
+		return strings.TrimSpace(text) != ""
+	case "tool_call", "tool_call_update":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Client) failAll(err error) {
+	c.mu.Lock()
+	pending := c.pending
+	c.pending = map[int]rpcWaiter{}
+	c.mu.Unlock()
+	for _, waiter := range pending {
+		waiter.ch <- rpcResult{err: err}
+	}
+}
+
+func setEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
+func str(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+func asInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case json.Number:
+		i, err := n.Int64()
+		return int(i), err == nil
+	default:
+		return 0, false
+	}
+}
+
+func trim(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}

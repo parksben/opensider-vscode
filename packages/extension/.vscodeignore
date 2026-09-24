@@ -1,0 +1,9 @@
+src/**
+shared/**
+tsconfig.json
+esbuild.mjs
+vite.webview.config.ts
+node_modules/**
+package-lock.json
+**/*.map
+.gitignore

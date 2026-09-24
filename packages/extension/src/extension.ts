@@ -1,0 +1,405 @@
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
+import * as vscode from "vscode";
+import { HostProcess, hostBinary, type HostMessage } from "./host";
+import { readSelection, selectionKey, workspaceCwd, type CodeAttachment } from "./selection";
+import { openEditorTabs, openWorkspaceFile, resolveWorkspaceFile } from "./workspace-files";
+import { OutputDocuments, OUTPUT_SCHEME } from "./output-doc";
+import { TerminalRegistry } from "./terminal";
+
+type WebviewMessage =
+  | { type: "ready" }
+  | { type: "host"; message: HostMessage }
+  | { type: "open"; path: string; startLine?: number; endLine?: number }
+  | { type: "openExternal"; url: string }
+  | { type: "terminal.show"; terminalId: string }
+  | { type: "output.open"; id: string; command: string; output: string }
+  | { type: "selection.dismiss"; key: string };
+
+const VIEW_ID = "opensider-vscode.chat";
+/** Set once we have moved the view to the secondary side bar, so a later drag sticks. */
+const PLACED_KEY = "opensider-vscode.placedInSecondarySideBar";
+
+function homeDir(): string {
+  return path.join(homedir(), ".opensider-vscode");
+}
+
+function panelHtml(webview: vscode.Webview, extensionPath: string): string {
+  const dist = path.join(extensionPath, "dist", "panel");
+  let html = readFileSync(path.join(dist, "index.html"), "utf8");
+  const nonce = Math.random().toString(36).slice(2);
+  html = html.replace(/(src|href)="([^"]+)"/g, (full, attr: string, url: string) => {
+    if (/^(https?:|data:)/.test(url)) return full;
+    const file = path.join(dist, url.replace(/^\.\//, ""));
+    return `${attr}="${webview.asWebviewUri(vscode.Uri.file(file))}"`;
+  });
+  const csp = [
+    "default-src 'none'",
+    `img-src ${webview.cspSource} data: blob: https:`,
+    `style-src ${webview.cspSource} 'unsafe-inline' https://fonts.googleapis.com`,
+    `font-src ${webview.cspSource} https://fonts.gstatic.com`,
+    `script-src 'nonce-${nonce}'`,
+  ].join("; ");
+  html = html.replace(/<script\b/g, `<script nonce="${nonce}"`);
+  return html.replace("</head>", `<meta http-equiv="Content-Security-Policy" content="${csp}">\n</head>`);
+}
+
+class ChatViewProvider implements vscode.WebviewViewProvider {
+  private view: vscode.WebviewView | undefined;
+  private host = new HostProcess({
+    onMessage: (message) => this.post({ type: "host", message }),
+    onExit: (error) => this.post({ type: "host", message: { type: "status", state: "error", error } }),
+  });
+  private dismissedKey = "";
+  private pendingPin: CodeAttachment | undefined;
+  private started = false;
+  private webReady = false;
+  private readonly outputs = new OutputDocuments();
+  private readonly terminals = new TerminalRegistry((state) =>
+    this.post({ type: "terminal.state", state }),
+  );
+  private queue: unknown[] = [];
+
+  constructor(private readonly context: vscode.ExtensionContext) {}
+
+  resolveWebviewView(view: vscode.WebviewView): void {
+    this.view = view;
+    this.webReady = false;
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist")],
+    };
+    view.webview.html = panelHtml(view.webview, this.context.extensionPath);
+    view.webview.onDidReceiveMessage((message: WebviewMessage) => this.onWebview(message));
+    view.onDidDispose(() => {
+      if (this.view === view) this.view = undefined;
+    });
+    this.ensureHost();
+  }
+
+  focus(): void {
+    void vscode.commands.executeCommand(`${VIEW_ID}.focus`);
+  }
+
+  pinSelection(): void {
+    const attachment = readSelection();
+    if (!attachment) return;
+    attachment.pinned = true;
+    attachment.id = `${selectionKey(attachment)}:${Date.now()}`;
+    if (!this.view) {
+      this.pendingPin = attachment;
+      this.focus();
+      return;
+    }
+    this.post({ type: "pin", attachment });
+    this.focus();
+  }
+
+  private ensureHost(): void {
+    if (this.started) {
+      this.pushWorkspace();
+      this.pushSelection();
+      return;
+    }
+    this.started = true;
+    this.host.start(hostBinary(this.context.extensionPath));
+    this.pushWorkspace();
+    this.host.send({ type: "hello" });
+    this.host.send({ type: "agents.detect" });
+  }
+
+  private onWebview(message: WebviewMessage): void {
+    if (message.type === "ready") {
+      this.webReady = true;
+      const queued = this.queue;
+      this.queue = [];
+      for (const item of queued) void this.view?.webview.postMessage(item);
+      this.pushWorkspace();
+      this.pushSelection();
+      this.pushTabs();
+      if (this.pendingPin) {
+        this.post({ type: "pin", attachment: this.pendingPin });
+        this.pendingPin = undefined;
+      }
+      return;
+    }
+    if (message.type === "host") {
+      if (this.handleTerminal(message.message)) return;
+      if (this.handleLocal(message.message)) return;
+      this.host.send(message.message);
+      return;
+    }
+    if (message.type === "terminal.show") {
+      // No VS Code terminal for this command (the agent ran it itself): the card falls
+      // back to the read-only document, so say so rather than silently doing nothing.
+      if (!this.terminals.show(message.terminalId)) {
+        this.post({ type: "terminal.missing", terminalId: message.terminalId });
+      }
+      return;
+    }
+    if (message.type === "output.open") {
+      void this.outputs.open(message.id, message.command, message.output);
+      return;
+    }
+    if (message.type === "openExternal") {
+      // A link that looks like a workspace file opens in the editor; anything else is external.
+      const target = resolveWorkspaceFile(message.url);
+      if (target) {
+        void openWorkspaceFile(target);
+        return;
+      }
+      void vscode.env.openExternal(vscode.Uri.parse(message.url));
+      return;
+    }
+    if (message.type === "selection.dismiss") {
+      this.dismissedKey = message.key;
+      return;
+    }
+    if (message.type === "open") {
+      const target = resolveWorkspaceFile(message.path);
+      void openWorkspaceFile(
+        target ?? {
+          uri: vscode.Uri.file(message.path),
+          startLine: message.startLine,
+          endLine: message.endLine,
+        },
+      );
+    }
+  }
+
+  /**
+   * `terminal/*` forwarded by the Go host. The reply carries the same id back so the host
+   * can answer the agent.
+   */
+  private handleTerminal(message: HostMessage): boolean {
+    if (String(message.type ?? "") !== "terminal") return false;
+    const id = message.id;
+    const method = String(message.method ?? "");
+    const params = (message.params as Record<string, unknown>) ?? {};
+    void this.terminals
+      .handle(method, params)
+      .then((result) => this.host.send({ type: "terminal.reply", id, result }))
+      .catch((error: unknown) =>
+        this.host.send({
+          type: "terminal.reply",
+          id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    return true;
+  }
+
+  private handleLocal(message: HostMessage): boolean {
+    const type = String(message.type ?? "");
+    const requestId = typeof message.requestId === "string" ? message.requestId : "";
+    if (type === "fs.pick") {
+      void this.pickFiles(requestId, typeof message.mode === "string" ? message.mode : "mixed");
+      return true;
+    }
+    if (type === "fs.preview") {
+      void this.previewFile(requestId, typeof message.path === "string" ? message.path : "");
+      return true;
+    }
+    if (type === "fs.save" || type === "fs.upload") {
+      void this.saveUpload(type, message);
+      return true;
+    }
+    return false;
+  }
+
+  private async pickFiles(requestId: string, mode: string): Promise<void> {
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: mode !== "folders",
+      canSelectFolders: mode !== "files",
+      canSelectMany: true,
+      openLabel: "Attach",
+    });
+    if (!uris) {
+      this.post({ type: "host", message: { type: "fs.picked", requestId, items: [], cancelled: true } });
+      return;
+    }
+    const items = await Promise.all(
+      uris.map(async (uri) => {
+        const info = await stat(uri.fsPath);
+        return {
+          path: uri.fsPath,
+          name: path.basename(uri.fsPath),
+          kind: info.isDirectory() ? "folder" : "file",
+        };
+      }),
+    );
+    this.post({ type: "host", message: { type: "fs.picked", requestId, items } });
+  }
+
+  private async previewFile(requestId: string, file: string): Promise<void> {
+    try {
+      const bytes = await readFile(file);
+      const lower = file.toLowerCase();
+      const mime = lower.endsWith(".png")
+        ? "image/png"
+        : lower.endsWith(".gif")
+          ? "image/gif"
+          : lower.endsWith(".webp")
+            ? "image/webp"
+            : "image/jpeg";
+      this.post({
+        type: "host",
+        message: {
+          type: "fs.previewed",
+          requestId,
+          mime,
+          size: bytes.length,
+          index: 0,
+          total: 1,
+          data: bytes.toString("base64"),
+        },
+      });
+    } catch (error) {
+      this.post({
+        type: "host",
+        message: { type: "fs.previewed", requestId, error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
+
+  private async saveUpload(type: "fs.save" | "fs.upload", message: HostMessage): Promise<void> {
+    const requestId = typeof message.requestId === "string" ? message.requestId : "";
+    const reply = type === "fs.save" ? "fs.saved" : "fs.uploaded";
+    try {
+      const dir = path.join(homeDir(), "uploads");
+      await mkdir(dir, { recursive: true });
+      const raw = typeof message.name === "string" && message.name ? message.name : `paste-${Date.now()}.png`;
+      const file = path.join(dir, `${Date.now()}-${path.basename(raw)}`);
+      const payload = typeof message.imageBase64 === "string" ? message.imageBase64 : String(message.base64 ?? "");
+      await writeFile(file, Buffer.from(payload, "base64"));
+      const name = path.basename(file);
+      const kind = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name) ? "image" : "file";
+      this.post({ type: "host", message: { type: reply, requestId, items: [{ path: file, name, kind }] } });
+    } catch (error) {
+      this.post({
+        type: "host",
+        message: { type: reply, requestId, items: [], error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
+
+  private pushWorkspace(): void {
+    const cwd = workspaceCwd();
+    if (cwd) this.host.send({ type: "workspace.set", cwd });
+    const name = cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd) : "";
+    this.post({ type: "workspace", cwd: cwd ?? "", name });
+  }
+
+  private pushSelection(): void {
+    const attachment = readSelection();
+    if (!attachment) {
+      this.post({ type: "selection", attachment: null });
+      return;
+    }
+    if (selectionKey(attachment) === this.dismissedKey) return;
+    this.dismissedKey = "";
+    this.post({ type: "selection", attachment });
+  }
+
+  private pushTabs(): void {
+    this.post({ type: "tabs", tabs: openEditorTabs() });
+  }
+
+  noteSelection(): void {
+    if (!this.view) return;
+    this.pushSelection();
+  }
+
+  noteWorkspace(): void {
+    if (!this.view) return;
+    this.pushWorkspace();
+  }
+
+  noteTabs(): void {
+    if (!this.view) return;
+    this.pushTabs();
+  }
+
+  private post(message: unknown): void {
+    if (!this.webReady || !this.view) {
+      this.queue.push(message);
+      return;
+    }
+    void this.view.webview.postMessage(message);
+  }
+
+  dispose(): void {
+    this.host.stop();
+    this.terminals.dispose();
+    this.outputs.dispose();
+  }
+
+  outputProvider(): OutputDocuments {
+    return this.outputs;
+  }
+}
+
+/**
+ * Copies the bundled setup skill to a stable path under the user's home, so the
+ * "no agent found" prompt can point a local agent at a real file instead of a URL.
+ */
+async function installSkill(context: vscode.ExtensionContext): Promise<void> {
+  try {
+    const target = path.join(homeDir(), "skills", "opensider-vscode");
+    await mkdir(target, { recursive: true });
+    await copyFile(
+      path.join(context.extensionPath, "skills", "opensider-vscode", "SKILL.md"),
+      path.join(target, "SKILL.md"),
+    );
+  } catch {
+    // The sidebar still shows the prompt; a missing copy only costs the agent one read.
+  }
+}
+
+/**
+ * Opens next to Copilot Chat on first run.
+ *
+ * The view is contributed to the activity bar, so the icon stays on the left; this moves
+ * the view itself into the secondary side bar once. Doing it only once means a user who
+ * drags it back keeps their choice.
+ */
+async function placeInSecondarySideBar(context: vscode.ExtensionContext): Promise<void> {
+  if (context.globalState.get<boolean>(PLACED_KEY)) return;
+  await context.globalState.update(PLACED_KEY, true);
+  try {
+    await vscode.commands.executeCommand("vscode.moveViews", {
+      viewIds: [VIEW_ID],
+      destinationId: "workbench.view.extension.opensider-vscode",
+      destinationLocation: "auxiliarybar",
+    });
+  } catch {
+    // Older VS Code without the command: the view simply stays in the primary side bar.
+  }
+}
+
+export function activate(context: vscode.ExtensionContext): void {
+  const provider = new ChatViewProvider(context);
+  void installSkill(context);
+  void placeInSecondarySideBar(context);
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(OUTPUT_SCHEME, provider.outputProvider()),
+    vscode.window.registerWebviewViewProvider(VIEW_ID, provider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+    vscode.commands.registerCommand("opensider-vscode.focus", () => provider.focus()),
+    vscode.commands.registerCommand("opensider-vscode.addSelection", () => provider.pinSelection()),
+    vscode.window.onDidChangeTextEditorSelection(() => provider.noteSelection()),
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      provider.noteSelection();
+      provider.noteWorkspace();
+      provider.noteTabs();
+    }),
+    vscode.window.tabGroups.onDidChangeTabs(() => provider.noteTabs()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => provider.noteWorkspace()),
+    { dispose: () => provider.dispose() },
+  );
+}
+
+export function deactivate(): void {}
