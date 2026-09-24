@@ -27,19 +27,26 @@ export const ENTRY_FILE_TIMEOUT_MS = 3_000;
  * and `Files` is not among them.
  */
 const FILE_DRAG_TYPES = [
-  "Files",
+  "files",
   "text/uri-list",
   // VS Code's own list: unlike `text/uri-list` it holds every dragged resource, not just
   // the first one.
   "application/vnd.code.uri-list",
-  "ResourceURLs",
+  "resourceurls",
+  "codefiles",
 ] as const;
 
 /** The path-carrying types, most complete first. */
 const PATH_DRAG_TYPES = ["application/vnd.code.uri-list", "text/uri-list"] as const;
 
+/**
+ * Compared lowercased: `DataTransfer.types` reports `Files` with a capital F but hands back
+ * VS Code's own formats (`resourceurls`, `codefiles`) already lowercased, so matching on
+ * the spelling either side happens to use is a trap.
+ */
 export function dragCarriesFiles(types: readonly string[]): boolean {
-  return FILE_DRAG_TYPES.some((type) => types.includes(type));
+  const seen = types.map((type) => type.toLowerCase());
+  return FILE_DRAG_TYPES.some((type) => seen.includes(type));
 }
 
 /**
@@ -80,6 +87,53 @@ export function nextDragOverlay(state: DragOverlay, signal: DragSignal): DragOve
   if (signal.kind === "over") return { visible: true, until: signal.at + DRAG_IDLE_MS };
   if (!state.visible) return state;
   return signal.at >= state.until ? NO_DRAG : state;
+}
+
+/**
+ * Taking the frame back from the workbench.
+ *
+ * VS Code parks every webview while a drag is anywhere over its window: its
+ * `WebviewWindowDragMonitor` answers a `dragover` on the workbench window by setting
+ * `pointer-events: none` on our iframe, so a file dragged in across the editor is already
+ * shut out by the time it reaches the panel - no `dragenter`, no overlay, no drop. Holding
+ * Shift is the one exemption the monitor makes, and it takes the webview's word for it:
+ * the frame host forwards `drag` reports with whatever `shiftKey` the event carried, and a
+ * report with `shiftKey` set makes the monitor hand the frame back.
+ *
+ * So that is what this sends - a `dragover` at our own window, flagged, carrying one file
+ * so the host recognises it as a file drag worth reporting. It is the only channel a
+ * webview has to say "leave this frame alone", and it has to be sent on a timer because a
+ * parked frame cannot see the drag that parked it. Once the frame is back and the pointer
+ * is over the panel, the drag stays inside this document and nothing parks it again.
+ */
+const RECLAIM_FLAG = "__opensiderReclaim";
+
+/** How often to reclaim: comfortably inside the ~350ms the drag model re-fires `dragover`. */
+export const RECLAIM_MS = 200;
+
+/** Our own reclaim bouncing back through the listeners; never a real drag. */
+export function isReclaim(event: Event): boolean {
+  return (event as unknown as Record<string, unknown>)[RECLAIM_FLAG] === true;
+}
+
+export function reclaimFrame(target: Window): void {
+  let data: DataTransfer;
+  try {
+    data = new DataTransfer();
+    // The frame host only reports drags whose items are all files, so an empty one is
+    // ignored and the frame is never handed back.
+    data.items.add(new File([], "reclaim"));
+  } catch {
+    return;
+  }
+  const event = new DragEvent("dragover", {
+    bubbles: false,
+    cancelable: true,
+    shiftKey: true,
+    dataTransfer: data,
+  });
+  Object.defineProperty(event, RECLAIM_FLAG, { value: true });
+  target.dispatchEvent(event);
 }
 
 export type DroppedFile = {
@@ -145,9 +199,11 @@ export async function fileToBase64(file: File): Promise<string | undefined> {
  * choice between the two can be tested without a DataTransfer: `read` is the lookup.
  */
 export function pathsFromTypes(types: readonly string[], read: (type: string) => string): string[] {
+  const seen = new Map(types.map((type) => [type.toLowerCase(), type]));
   for (const type of PATH_DRAG_TYPES) {
-    if (!types.includes(type)) continue;
-    const paths = parseUriList(read(type));
+    const actual = seen.get(type);
+    if (actual === undefined) continue;
+    const paths = parseUriList(read(actual));
     // A type that is present but holds nothing usable is not a reason to stop looking.
     if (paths.length > 0) return paths;
   }

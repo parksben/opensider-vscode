@@ -21,11 +21,14 @@ import {
 import {
   MAX_DROP_FILES,
   NO_DRAG,
+  RECLAIM_MS,
   collectDrop,
   dragCarriesFiles,
   emptySkips,
+  isReclaim,
   nextDragOverlay,
   pathsFromDrop,
+  reclaimFrame,
   walkEntry,
   type DragOverlay,
   type DragSignal,
@@ -218,6 +221,10 @@ export function ChatPane({
   const paperclipRef = useRef<HTMLSpanElement>(null);
   const [savingPaste, setSavingPaste] = useState(false);
   const [dropping, setDropping] = useState(false);
+  /** The drag claim behind `dropping`; a ref so it outlives renders, like the state does. */
+  const overlayRef = useRef<DragOverlay>(NO_DRAG);
+  const onUploadFilesRef = useRef(onUploadFiles);
+  onUploadFilesRef.current = onUploadFiles;
   const carryRef = useRef<ComposerCarry | null>(null);
   const [editingId, setEditingId] = useState<string>();
   const [editingQueueId, setEditingQueueId] = useState<string>();
@@ -588,7 +595,7 @@ export function ChatPane({
     // Even an empty plan is handed over: the uploader is what tells the user why nothing
     // was attached (too large, too many, unreadable, host silent), and a drop that ends in
     // silence is the bug we are not allowed to have.
-    mergeAttachments(await onUploadFiles(plan));
+    mergeAttachments(await onUploadFilesRef.current(plan));
   };
 
   // The whole panel accepts files, not just the composer: dropping one used to hand it to
@@ -602,21 +609,16 @@ export function ChatPane({
   // overlay never cleared and the drop landed in the workbench instead of here. Capturing
   // first means those listeners never run and the frame stays live.
   useEffect(() => {
-    let overlay = NO_DRAG;
-    let watchdog = 0;
     const apply = (next: DragOverlay) => {
-      const was = overlay.visible;
-      overlay = next;
-      if (next.visible === was) return;
+      overlayRef.current = next;
+      // Always pushed, never only on a transition: `dropping` is React state that outlives
+      // this effect, so inferring "no change needed" from the claim alone is how an overlay
+      // gets stranded on screen.
       setDropping(next.visible);
-      // The watchdog only has to run while there is a claim to retire.
-      window.clearInterval(watchdog);
-      watchdog = next.visible
-        ? window.setInterval(() => apply(nextDragOverlay(overlay, { kind: "tick", at: Date.now() })), 200)
-        : 0;
     };
-    const signal = (event: DragSignal) => apply(nextDragOverlay(overlay, event));
+    const signal = (event: DragSignal) => apply(nextDragOverlay(overlayRef.current, event));
     const claim = (event: DragEvent): boolean => {
+      if (isReclaim(event)) return false;
       if (!dragCarriesFiles(Array.from(event.dataTransfer?.types ?? []))) return false;
       event.preventDefault();
       event.stopPropagation();
@@ -674,6 +676,13 @@ export function ChatPane({
     };
     const onBlur = () => signal({ kind: "exit" });
 
+    // One timer for both jobs, since they run at the same rate: take the frame back off
+    // the workbench, and retire an overlay claim nothing renewed.
+    const beat = window.setInterval(() => {
+      if (document.visibilityState === "visible") reclaimFrame(window);
+      if (overlayRef.current.visible) signal({ kind: "tick", at: Date.now() });
+    }, RECLAIM_MS);
+
     window.addEventListener("dragenter", onEnter, true);
     window.addEventListener("dragover", onOver, true);
     window.addEventListener("dragleave", onLeave, true);
@@ -682,7 +691,7 @@ export function ChatPane({
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("blur", onBlur);
     return () => {
-      window.clearInterval(watchdog);
+      window.clearInterval(beat);
       window.removeEventListener("dragenter", onEnter, true);
       window.removeEventListener("dragover", onOver, true);
       window.removeEventListener("dragleave", onLeave, true);
@@ -691,7 +700,11 @@ export function ChatPane({
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("blur", onBlur);
     };
-  }, [onUploadFiles]);
+    // Mount-scoped on purpose: the handlers reach callbacks through refs, so the listeners
+    // are installed exactly once. Re-running this on every render used to tear the capture
+    // listeners down and rebuild them mid-drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <TerminalsContext.Provider value={terminals ?? {}}>
