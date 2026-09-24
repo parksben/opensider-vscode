@@ -55,7 +55,7 @@ function attachmentLabel(item: AttachmentItem): string {
   return item.name || item.path;
 }
 
-function matchFieldPriority(field: AtMatchField): number {
+export function matchFieldPriority(field: AtMatchField): number {
   return field === "name" ? 0 : 1;
 }
 
@@ -97,7 +97,7 @@ function matchAttachment(item: AttachmentItem, query: string): AtAttachmentMatch
       item,
       matchField: "name",
       label: attachmentLabel(item),
-      labelRanges: findMatchRanges(name, normalized),
+      labelRanges: findMatchRanges(attachmentLabel(item), normalized),
     };
   }
   if (path.toLowerCase().includes(normalized.toLowerCase())) {
@@ -105,7 +105,7 @@ function matchAttachment(item: AttachmentItem, query: string): AtAttachmentMatch
       item,
       matchField: "path",
       label: attachmentLabel(item),
-      labelRanges: findMatchRanges(name, normalized),
+      labelRanges: findMatchRanges(attachmentLabel(item), normalized),
     };
   }
   return null;

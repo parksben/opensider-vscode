@@ -45,7 +45,7 @@
         "command": "opensider-vscode.focus",
         "title": "Open OpenSider",
         "category": "OpenSider",
-        "icon": "media/icon.svg"
+        "icon": "media/icon-color.svg"
       }
     ],
     "menus": {

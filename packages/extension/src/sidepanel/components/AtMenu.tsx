@@ -1,5 +1,4 @@
 import type { AttachmentItem } from "@shared";
-import { File } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -11,22 +10,32 @@ import {
   openAtMenuLock,
   releaseEnterSuppress,
 } from "../at-menu-lock";
-import { filterAtAttachments, filterAtTabs, type AtAttachmentMatch, type AtTabMatch } from "../at-menu-search";
+import { filterAtAttachments, filterAtTabs, matchFieldPriority } from "../at-menu-search";
 import { attachmentToMention, type MentionChip } from "../mentions";
-import type { Locale } from "../i18n";
+import type { Locale, MessageKey } from "../i18n";
 import { t } from "../i18n";
 import type { HistoryTab } from "../composer-history";
 import { HighlightText } from "./HighlightText";
 import { RippleButton } from "./RippleButton";
 import { MentionIcon } from "./MentionChip";
 
-export type AtPane = "tabs" | "attachments";
-
 const SAFE = 16;
 const GAP = 6;
 const MENU_WIDTH = 256;
 
-type AtMenuItem = AtTabMatch | AtAttachmentMatch;
+/**
+ * 标签页和附件混在一个列表里，来源靠标题后面那个弱化的类型标记区分：图标已经表示文件 /
+ * 文件夹 / 图片，标记表示这一项是从编辑器标签页来的还是输入框里已有的附件。
+ */
+type AtRow = {
+  key: string;
+  mention: MentionChip;
+  title: string;
+  label: string;
+  labelRanges: ReadonlyArray<readonly [number, number]>;
+  tagKey: MessageKey;
+  priority: number;
+};
 
 function placeMenu(
   anchor: DOMRect,
@@ -71,25 +80,47 @@ export function AtMenu({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const [pane, setPane] = useState<AtPane>("tabs");
   const [highlight, setHighlight] = useState(0);
   const [pos, setPos] = useState({ top: 0, left: 0, maxHeight: 224, ready: false });
 
-  const filteredTabs = useMemo(() => filterAtTabs(tabs, query), [query, tabs]);
-  const filteredAttachments = useMemo(() => filterAtAttachments(attachments, query), [attachments, query]);
-  const items: AtMenuItem[] = pane === "tabs" ? filteredTabs : filteredAttachments;
-  const count = items.length;
   const searching = query.trim().length > 0;
+  const rows = useMemo<AtRow[]>(() => {
+    const tabRows = filterAtTabs(tabs, query).map<AtRow>((match) => ({
+      key: `tab:${match.tab.path}`,
+      mention: {
+        kind: "tab",
+        path: match.tab.path,
+        relativePath: match.tab.relativePath,
+        name: match.tab.name,
+      },
+      title: match.tab.path,
+      label: match.label,
+      labelRanges: match.labelRanges,
+      tagKey: "atTagTab",
+      priority: matchFieldPriority(match.matchField),
+    }));
+    const attachmentRows = filterAtAttachments(attachments, query).map<AtRow>((match) => ({
+      key: `att:${match.item.path}`,
+      mention: attachmentToMention(match.item),
+      title: match.item.path,
+      label: match.label,
+      labelRanges: match.labelRanges,
+      tagKey: "atTagAttachment",
+      priority: matchFieldPriority(match.matchField),
+    }));
+    const merged = [...tabRows, ...attachmentRows];
+    // 有查询时按命中字段排相关性（文件名命中在路径命中之前），没查询时标签页排在附件之前。
+    return searching ? merged.sort((a, b) => a.priority - b.priority) : merged;
+  }, [attachments, query, searching, tabs]);
+  const count = rows.length;
   const getAnchorRectRef = useRef(getAnchorRect);
-  const paneRef = useRef(pane);
   const highlightRef = useRef(highlight);
-  const itemsRef = useRef(items);
+  const rowsRef = useRef(rows);
   const onSelectRef = useRef(onSelect);
   const onCloseRef = useRef(onClose);
   getAnchorRectRef.current = getAnchorRect;
-  paneRef.current = pane;
   highlightRef.current = highlight;
-  itemsRef.current = items;
+  rowsRef.current = rows;
   onSelectRef.current = onSelect;
   onCloseRef.current = onClose;
 
@@ -112,33 +143,27 @@ export function AtMenu({
     if (pendingCloseRef.current) return;
     if (event && atMenuLock.lastEnter === event) return;
     if (event) atMenuLock.lastEnter = event;
-    const chosen = itemsRef.current[highlightRef.current];
+    const chosen = rowsRef.current[highlightRef.current];
     if (!chosen) return;
-    if (paneRef.current === "tabs") {
-      const tab = (chosen as AtTabMatch).tab;
-      pick({ kind: "tab", path: tab.path, relativePath: tab.relativePath, name: tab.name }, true);
-    } else {
-      pick(attachmentToMention((chosen as AtAttachmentMatch).item), true);
-    }
+    pick(chosen.mention, true);
   };
 
   if (open) atMenuLock.confirm = confirmHighlight;
 
   useEffect(() => {
     if (!open) return;
-    setPane("tabs");
     setHighlight(0);
   }, [open]);
 
   useEffect(() => {
     setHighlight(0);
-  }, [pane, query]);
+  }, [query]);
 
   useLayoutEffect(() => {
     if (!open) return;
     const node = listRef.current?.querySelector<HTMLElement>(`[data-at-index="${highlight}"]`);
     node?.scrollIntoView({ block: "nearest" });
-  }, [open, highlight, pane, query]);
+  }, [open, highlight, query]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -167,7 +192,7 @@ export function AtMenu({
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [open, pane, query, tabs, attachments]);
+  }, [open, query, tabs, attachments]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -191,16 +216,16 @@ export function AtMenu({
         onCloseRef.current();
         return;
       }
-      if (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      // 菜单开着的时候 Tab 不能把焦点从输入框带走，否则菜单会留在屏幕上没人管。
+      if (event.key === "Tab") {
         event.preventDefault();
         event.stopPropagation();
-        setPane((current) => (current === "tabs" ? "attachments" : "tabs"));
         return;
       }
       if (event.key === "ArrowDown") {
         event.preventDefault();
         event.stopPropagation();
-        const total = itemsRef.current.length;
+        const total = rowsRef.current.length;
         if (total === 0) return;
         setHighlight((index) => (index + 1) % total);
         return;
@@ -208,7 +233,7 @@ export function AtMenu({
       if (event.key === "ArrowUp") {
         event.preventDefault();
         event.stopPropagation();
-        const total = itemsRef.current.length;
+        const total = rowsRef.current.length;
         if (total === 0) return;
         setHighlight((index) => (index - 1 + total) % total);
         return;
@@ -241,14 +266,7 @@ export function AtMenu({
 
   if (!open) return null;
 
-  const emptyKey =
-    count === 0
-      ? searching
-        ? "atNoMatches"
-        : pane === "tabs"
-          ? "atNoTabs"
-          : "atNoAttachments"
-      : null;
+  const emptyKey: MessageKey | null = count === 0 ? (searching ? "atNoMatches" : "atNoItems") : null;
 
   return createPortal(
     <div
@@ -262,71 +280,27 @@ export function AtMenu({
       }}
       onMouseDown={(event) => event.preventDefault()}
     >
-      <div className="flex shrink-0 border-b border-[var(--line)]">
-        {(["tabs", "attachments"] as const).map((id) => {
-          const active = pane === id;
-          return (
-            <RippleButton
-              key={id}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => setPane(id)}
-              className={`flex-1 px-2.5 py-1.5 text-[12px] ${
-                active ? "bg-[var(--hover-strong)] text-[var(--text)]" : "text-[var(--muted)]"
-              }`}
-            >
-              {t(locale, id === "tabs" ? "atTabs" : "atAttachments")}
-            </RippleButton>
-          );
-        })}
-      </div>
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
         {emptyKey ? (
           <p className="px-2.5 py-1.5 text-[12px] text-[var(--muted)]">{t(locale, emptyKey)}</p>
-        ) : pane === "tabs" ? (
-          filteredTabs.map((match, index) => {
+        ) : (
+          rows.map((row, index) => {
             const active = index === highlight;
-            const { tab } = match;
             return (
               <RippleButton
-                key={tab.path}
+                key={row.key}
                 data-at-index={index}
-                title={tab.path}
+                title={row.title}
                 onMouseDown={(event) => event.preventDefault()}
                 onPointerEnter={() => setHighlight(index)}
-                onClick={() => pick({ kind: "tab", path: tab.path, relativePath: tab.relativePath, name: tab.name })}
+                onClick={() => pick(row.mention)}
                 className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] ${
                   active ? "bg-[var(--hover-strong)] text-[var(--text)]" : "text-[var(--muted)]"
                 }`}
               >
-                <File size={12} className="shrink-0 opacity-80" />
-                <HighlightText text={match.label} ranges={match.labelRanges} className="min-w-0 flex-1 truncate" />
-              </RippleButton>
-            );
-          })
-        ) : (
-          filteredAttachments.map((match, index) => {
-            const active = index === highlight;
-            const mention = attachmentToMention(match.item);
-            return (
-              <RippleButton
-                key={match.item.path}
-                data-at-index={index}
-                title={match.item.path}
-                onMouseDown={(event) => event.preventDefault()}
-                onPointerEnter={() => setHighlight(index)}
-                onClick={() => pick(mention)}
-                className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left ${
-                  active ? "bg-[var(--hover-strong)]" : ""
-                }`}
-              >
-                <span className="cs-mention-chip shrink-0">
-                  <MentionIcon mention={mention} />
-                </span>
-                <HighlightText
-                  text={match.label}
-                  ranges={match.labelRanges}
-                  className="cs-mention-chip-label min-w-0 truncate text-[11px]"
-                />
+                <MentionIcon mention={row.mention} />
+                <HighlightText text={row.label} ranges={row.labelRanges} className="min-w-0 flex-1 truncate" />
+                <span className="shrink-0 text-[10px] text-[var(--muted)]">{t(locale, row.tagKey)}</span>
               </RippleButton>
             );
           })
