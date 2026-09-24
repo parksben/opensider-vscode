@@ -18,7 +18,7 @@
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "opensider-vscode",
           "title": "OpenSider",
@@ -44,7 +44,8 @@
       {
         "command": "opensider-vscode.focus",
         "title": "Open OpenSider",
-        "category": "OpenSider"
+        "category": "OpenSider",
+        "icon": "media/icon.svg"
       }
     ],
     "menus": {
@@ -53,6 +54,12 @@
           "command": "opensider-vscode.addSelection",
           "when": "editorHasSelection",
           "group": "navigation@20"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "opensider-vscode.focus",
+          "group": "navigation@-1"
         }
       ]
     }

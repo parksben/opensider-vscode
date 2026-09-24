@@ -271,7 +271,7 @@ export function SessionDrawer({
           dragging ? "bg-[var(--brass)]" : "bg-transparent"
         }`}
       />
-      <div className="flex shrink-0 border-b border-[var(--line)] pt-1.5">
+      <div className="flex shrink-0 border-b border-[var(--line)]">
         {(["sessions", "settings"] as const).map((id) => {
           const active = tab === id;
           return (
@@ -279,7 +279,7 @@ export function SessionDrawer({
               key={id}
               onClick={() => setTab(id)}
               aria-selected={active}
-              className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] ${
+              className={`flex flex-1 items-center justify-center gap-1 px-2.5 py-2 text-[12px] ${
                 active ? "bg-[var(--hover-strong)] text-[var(--text)]" : "text-[var(--muted)]"
               }`}
             >

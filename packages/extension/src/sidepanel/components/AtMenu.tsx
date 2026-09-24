@@ -299,10 +299,7 @@ export function AtMenu({
                 }`}
               >
                 <File size={12} className="shrink-0 opacity-80" />
-                <span className="flex min-w-0 flex-col">
-                  <HighlightText text={match.label} ranges={match.labelRanges} className="min-w-0 truncate" />
-                  <span className="min-w-0 truncate text-[10px] text-[var(--muted)]">{tab.relativePath}</span>
-                </span>
+                <HighlightText text={match.label} ranges={match.labelRanges} className="min-w-0 flex-1 truncate" />
               </RippleButton>
             );
           })

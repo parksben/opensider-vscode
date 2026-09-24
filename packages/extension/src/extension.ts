@@ -19,8 +19,6 @@ type WebviewMessage =
   | { type: "selection.dismiss"; key: string };
 
 const VIEW_ID = "opensider-vscode.chat";
-/** Set once we have moved the view to the secondary side bar, so a later drag sticks. */
-const PLACED_KEY = "opensider-vscode.placedInSecondarySideBar";
 
 function homeDir(): string {
   return path.join(homedir(), ".opensider-vscode");
@@ -80,7 +78,12 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   focus(): void {
-    void vscode.commands.executeCommand(`${VIEW_ID}.focus`);
+    // 视图挂在辅助侧栏（右侧）。它默认是收起的，所以先展开再聚焦，
+    // 否则命令打在一个隐藏容器上，用户点了看不到任何反应。
+    void vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar").then(
+      () => vscode.commands.executeCommand(`${VIEW_ID}.focus`),
+      () => vscode.commands.executeCommand(`${VIEW_ID}.focus`),
+    );
   }
 
   pinSelection(): void {
@@ -358,31 +361,9 @@ async function installSkill(context: vscode.ExtensionContext): Promise<void> {
   }
 }
 
-/**
- * Opens next to Copilot Chat on first run.
- *
- * The view is contributed to the activity bar, so the icon stays on the left; this moves
- * the view itself into the secondary side bar once. Doing it only once means a user who
- * drags it back keeps their choice.
- */
-async function placeInSecondarySideBar(context: vscode.ExtensionContext): Promise<void> {
-  if (context.globalState.get<boolean>(PLACED_KEY)) return;
-  await context.globalState.update(PLACED_KEY, true);
-  try {
-    await vscode.commands.executeCommand("vscode.moveViews", {
-      viewIds: [VIEW_ID],
-      destinationId: "workbench.view.extension.opensider-vscode",
-      destinationLocation: "auxiliarybar",
-    });
-  } catch {
-    // Older VS Code without the command: the view simply stays in the primary side bar.
-  }
-}
-
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new ChatViewProvider(context);
   void installSkill(context);
-  void placeInSecondarySideBar(context);
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(OUTPUT_SCHEME, provider.outputProvider()),
     vscode.window.registerWebviewViewProvider(VIEW_ID, provider, {

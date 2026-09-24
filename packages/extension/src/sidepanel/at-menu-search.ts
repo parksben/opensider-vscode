@@ -43,8 +43,12 @@ export function findMatchRanges(text: string, query: string): ReadonlyArray<read
   return ranges;
 }
 
+/**
+ * 菜单里只显示这一行，所以用相对路径：工作区根目录下的文件它本来就等于文件名，
+ * 子目录下的则能把同名文件区分开（两个 index.ts 只看文件名是一样的）。
+ */
 function tabLabel(tab: HistoryTab): string {
-  return tab.name || tab.relativePath;
+  return tab.relativePath || tab.name;
 }
 
 function attachmentLabel(item: AttachmentItem): string {
@@ -67,7 +71,7 @@ function matchTab(tab: HistoryTab, query: string): AtTabMatch | null {
       tab,
       matchField: "name",
       label: tabLabel(tab),
-      labelRanges: findMatchRanges(name, normalized),
+      labelRanges: findMatchRanges(tabLabel(tab), normalized),
     };
   }
   if (relativePath.toLowerCase().includes(normalized.toLowerCase())) {
@@ -75,7 +79,7 @@ function matchTab(tab: HistoryTab, query: string): AtTabMatch | null {
       tab,
       matchField: "path",
       label: tabLabel(tab),
-      labelRanges: findMatchRanges(name, normalized),
+      labelRanges: findMatchRanges(tabLabel(tab), normalized),
     };
   }
   return null;
