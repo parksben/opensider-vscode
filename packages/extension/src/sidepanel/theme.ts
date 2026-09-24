@@ -7,7 +7,7 @@ export function isThemePreference(value: unknown): value is ThemePreference {
   return value === "light" || value === "dark" || value === "system";
 }
 
-/** First-run default. Chrome does not expose Light/Dark/Device, so match Device. */
+/** First-run default: follow the editor theme. */
 export function detectBrowserTheme(): ThemePreference {
   return "system";
 }

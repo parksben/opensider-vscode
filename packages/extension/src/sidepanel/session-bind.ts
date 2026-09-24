@@ -72,7 +72,7 @@ type SessionLike = {
   acpByProvider?: Record<string, string>;
 };
 
-/** 一个会话名下出现过的全部 ACP id（与 persist.ts 的 sessionAcpIds 同语义）。 */
+/** 一个会话名下出现过的全部 ACP id。 */
 function sessionAcpIds(session: SessionLike): string[] {
   const ids = new Set<string>();
   if (session.acpSessionId) ids.add(session.acpSessionId);
