@@ -118,8 +118,6 @@ export function App() {
   // 与 status 无关的「刚才那一下没成功」：拖入 / 粘贴失败、桥接太旧或没响应。这些必须
   // 在对话区里看得见（status=ready 时 error 只当 tooltip，用户等于什么都没看到）。
   const [notice, setNotice] = useState<string>();
-  /** 宿主在 `hello` 里报的版本，设置页只读展示。 */
-  const [hostVersion, setHostVersion] = useState("");
   /** Agent 上报的上下文用量；不上报就一直是 undefined，控件不出现。 */
   const [contextUsage, setContextUsage] = useState<ContextUsage>();
   /** 正在跑（或跑完）的命令，按 terminalId 存，卡片据此实时刷新。 */
@@ -603,7 +601,6 @@ export function App() {
     }
     if (msg.type === "hello") {
       if (msg.providerId) connectedProviderRef.current = msg.providerId;
-      setHostVersion(msg.version ?? "");
       // 面板一挂上就把 skill 列表要一份（Host 侧有 5 分钟缓存，不会真去扫）。
       sendRef.current({ type: "skills.refresh" });
       return;
@@ -1738,7 +1735,6 @@ export function App() {
             applyThemePreference(next);
             setTheme(next);
           }}
-          version={hostVersion}
         />
       ) : null}
       {/* 切换 Agent 前的高危确认：跑着的任务会被打断，先问一句（文案见 i18n）。 */}
