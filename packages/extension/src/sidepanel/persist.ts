@@ -160,6 +160,15 @@ export type PersistedState = {
    * holds it in memory — mirrors its state. The host prunes these after 30 days.
    */
   deletedSessions?: Record<string, string>;
+  /**
+   * Whether the `[Current file]` block goes out with prompts. Default on.
+   *
+   * Absent from `globalKeys` in internal/uistate, so it is per-workspace, on the same
+   * reasoning as the permission policy: it governs what leaves about *this* codebase.
+   * A repo where you would rather not stream your cursor around should not have to be
+   * re-muted every time you open another one.
+   */
+  shareActiveFile?: boolean;
 };
 
 export function settleFinishedContent(content: ChatPart[]): ChatPart[] {
@@ -211,9 +220,11 @@ export function serializeSession(session: Session): PersistedState["sessions"][n
 }
 
 const FORK_WRAP_PREFIX = /^\[Forked thread context[^\]]*\]\s*(?:\n\n)?/;
+/** The host's ambient block. It is environment, never something the user typed. */
+const CURRENT_FILE_PREFIX = /^\[Current file\] [^\n]*(?:\n\n)?/;
 
 export function stripEnvPrompt(text: string): string {
-  return text.replace(FORK_WRAP_PREFIX, "").trimStart();
+  return text.replace(CURRENT_FILE_PREFIX, "").replace(FORK_WRAP_PREFIX, "").trimStart();
 }
 
 function looksCollapsed(text: string): boolean {
@@ -427,6 +438,7 @@ export type LoadedState = {
   sessionDrawerWidth: number;
   sessions: Session[];
   deletedSessions: Record<string, string>;
+  shareActiveFile: boolean;
 };
 
 function migrateSessionBindings(session: Session, providerId: string): Session {
@@ -457,6 +469,7 @@ function emptyLoaded(savedAt?: string): LoadedState {
     sessionDrawerWidth: SESSION_DRAWER_DEFAULT,
     sessions: [],
     deletedSessions: {},
+    shareActiveFile: true,
   };
 }
 
@@ -494,6 +507,7 @@ export function fromPersisted(data: PersistedState | undefined | null): LoadedSt
     sessionDrawerWidth: clampSessionDrawerWidth(data.sessionDrawerWidth ?? SESSION_DRAWER_DEFAULT),
     sessions,
     deletedSessions: data.deletedSessions ?? {},
+    shareActiveFile: data.shareActiveFile !== false,
   };
 }
 
@@ -517,6 +531,7 @@ export function toPersistedState(state: {
   sessionDrawerWidth: number;
   sessions: Session[];
   deletedSessions: Record<string, string>;
+  shareActiveFile: boolean;
 }): PersistedState {
   return {
     version: 1,
@@ -535,6 +550,7 @@ export function toPersistedState(state: {
     sessionDrawerWidth: clampSessionDrawerWidth(state.sessionDrawerWidth),
     sessions: state.sessions.map(serializeSession),
     deletedSessions: Object.keys(state.deletedSessions).length ? state.deletedSessions : undefined,
+    shareActiveFile: state.shareActiveFile ? undefined : false,
   };
 }
 

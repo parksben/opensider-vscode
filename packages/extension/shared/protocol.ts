@@ -33,6 +33,28 @@ export type EditorTab = {
   dirty?: boolean;
 };
 
+/**
+ * The file the user is looking at right now.
+ *
+ * This is ambient context — it answers "what does *this function* mean?" — and it is
+ * pushed on every focus change, so it deliberately carries **no file contents**. The
+ * agent already has the workspace and a read tool; shipping a window of source on every
+ * cursor move would cost bytes continuously and go stale between the push and the
+ * prompt. What travels is the pointer: where the user is, not what is there.
+ */
+export type ActiveFile = {
+  path: string;
+  relativePath: string;
+  languageId: string;
+  dirty: boolean;
+  /** 1-based caret position. */
+  line: number;
+  column: number;
+  /** Only set when a non-empty selection is highlighted. 1-based and inclusive. */
+  selection?: { startLine: number; endLine: number };
+  lineCount: number;
+};
+
 /** 一条正在跑（或跑完）的命令，卡片和终端共用这一份状态。 */
 export type TerminalState = {
   terminalId: string;
@@ -226,6 +248,12 @@ export type ExtToHost =
       skillPrefix?: string;
       /** Editor selections shown as chips on the user's message. */
       attachments?: CodeAttachment[];
+      /**
+       * The file the user was looking at when they hit send. The host turns it into a
+       * one-line `[Current file]` block, and drops it when `attachments` already pin
+       * that exact range.
+       */
+      currentFile?: ActiveFile;
       /** 「立即发送」：该会话正在跑就先取消它，等它收尾再开始这一轮。 */
       interrupt?: boolean;
     }

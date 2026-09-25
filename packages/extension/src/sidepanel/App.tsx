@@ -16,8 +16,9 @@ import type {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { encodeBase64, fileToBase64, type DropPlan } from "./file-drop";
 import { blobUrlFromBase64Chunks, isAttachedImagePath } from "./image-preview";
+import { activeFileForPrompt, sameActiveFileDisplay, type ActiveFile } from "@shared";
 import { applyAcpUpdate, createUserMessage, usageFromUpdate } from "./acp-messages";
-import { connectSidebar, TERMINAL_EVENT, WORKSPACE_EVENT } from "./bridge";
+import { ACTIVE_FILE_EVENT, connectSidebar, TERMINAL_EVENT, WORKSPACE_EVENT } from "./bridge";
 import { changedFilesOf } from "./changed-files";
 import type { ChatMessage, PermissionRequest, PlanPrompt, QuestionPrompt, TodoItem } from "./chat-types";
 import { AgentSetup } from "./components/AgentSetup";
@@ -127,6 +128,14 @@ export function App() {
   const [workspaceCwd, setWorkspaceCwd] = useState("");
   /** id → ISO time for sessions the user deleted; see PersistedState.deletedSessions. */
   const [deletedSessions, setDeletedSessions] = useState<Record<string, string>>({});
+  const [shareActiveFile, setShareActiveFile] = useState(true);
+  /**
+   * The file the user is looking at. The ref is the truth the prompt reads; the state
+   * mirror only moves when something the composer *draws* changes, so a caret walking
+   * along a line does not re-render the composer.
+   */
+  const activeFileRef = useRef<ActiveFile | null>(null);
+  const [activeFileView, setActiveFileView] = useState<ActiveFile | null>(null);
   const [runningIds, setRunningIds] = useState<string[]>([]);
   const [queues, setQueues] = useState<Record<string, QueuedMessage[]>>({});
   const [permissions, setPermissions] = useState<Record<string, PermissionRequest>>({});
@@ -150,6 +159,7 @@ export function App() {
   const selectedModelRef = useRef(selectedModelId);
   const selectedModelByProviderRef = useRef(selectedModelByProvider);
   const agentModeRef = useRef(agentMode);
+  const shareActiveFileRef = useRef(shareActiveFile);
   const agentModesRef = useRef<AgentModeOption[]>([]);
   const agentModeByProviderRef = useRef<Record<string, string>>({});
   const agentOptionByProviderRef = useRef<Record<string, Record<string, string>>>({});
@@ -209,6 +219,7 @@ export function App() {
   selectedModelRef.current = selectedModelId;
   selectedModelByProviderRef.current = selectedModelByProvider;
   agentModeRef.current = agentMode;
+  shareActiveFileRef.current = shareActiveFile;
   agentModesRef.current = agentModes;
   skillsRef.current = skills;
   agentsRef.current = agents;
@@ -238,6 +249,7 @@ export function App() {
     setSessionsOpen(state.sessionsOpen);
     setDrawerWidth(state.sessionDrawerWidth);
     setDeletedSessions(state.deletedSessions);
+    setShareActiveFile(state.shareActiveFile);
     loadedRef.current = { ...state, sessions: nextSessions, selectedId: nextSelectedId };
     // 会话列表被整表替换（host 镜像灌回）：悬挂的请求可能指向已不存在的本地会话，清掉。
     bindRegistry.current.clear();
@@ -267,9 +279,15 @@ export function App() {
     text: string,
     interrupt = false,
     skillPrefix = "",
+    attachments: AttachmentItem[] = [],
   ) => {
     const requestId = crypto.randomUUID();
     bindRegistry.current.add(requestId, localId, "prompt");
+    // Ambient editor context, read at send time so it reflects where the user actually
+    // was — unless they muted it for this workspace, or already pinned that exact range.
+    const currentFile = shareActiveFileRef.current
+      ? activeFileForPrompt(activeFileRef.current, attachments)
+      : undefined;
     sendRef.current({
       type: "prompt",
       text,
@@ -277,6 +295,7 @@ export function App() {
       requestId,
       interrupt,
       ...(skillPrefix ? { skillPrefix } : {}),
+      ...(currentFile ? { currentFile } : {}),
     });
   };
 
@@ -465,11 +484,19 @@ export function App() {
       const state = (event as CustomEvent).detail as TerminalState;
       setTerminals((current) => ({ ...current, [state.terminalId]: state }));
     };
+    const onActiveFile = (event: Event) => {
+      const file = ((event as CustomEvent).detail as ActiveFile | null) ?? null;
+      const previous = activeFileRef.current;
+      activeFileRef.current = file;
+      if (!sameActiveFileDisplay(previous, file)) setActiveFileView(file);
+    };
     window.addEventListener(WORKSPACE_EVENT, onWorkspace);
     window.addEventListener(TERMINAL_EVENT, onTerminal);
+    window.addEventListener(ACTIVE_FILE_EVENT, onActiveFile);
     return () => {
       window.removeEventListener(WORKSPACE_EVENT, onWorkspace);
       window.removeEventListener(TERMINAL_EVENT, onTerminal);
+      window.removeEventListener(ACTIVE_FILE_EVENT, onActiveFile);
     };
   }, []);
 
@@ -695,6 +722,7 @@ export function App() {
           regen.context ? `${wrapForkContext(regen.context)}\n\n${body}` : body,
           false,
           skillPrefix,
+          regen.attachments,
         );
       }
       return;
@@ -982,6 +1010,7 @@ export function App() {
       sessionDrawerWidth: drawerWidth,
       sessions,
       deletedSessions,
+      shareActiveFile,
     });
     void saveState(payload).then(() => {
       if (!hostMirrorReady) return;
@@ -1004,6 +1033,7 @@ export function App() {
     drawerWidth,
     sessions,
     deletedSessions,
+    shareActiveFile,
   ]);
 
   useLayoutEffect(() => {
@@ -1097,6 +1127,7 @@ export function App() {
       context ? `${wrapForkContext(context)}\n\n${body}` : body,
       options.interrupt,
       skillPrefix,
+      attachments,
     );
   };
 
@@ -1666,6 +1697,9 @@ export function App() {
               onEnqueue={onEnqueue}
               onUpdateQueued={onUpdateQueued}
               onDeleteQueued={onDeleteQueued}
+              activeFile={activeFileView}
+              shareActiveFile={shareActiveFile}
+              onShareActiveFile={setShareActiveFile}
               onSendQueuedNow={onSendQueuedNow}
               onEditingQueued={onEditingQueued}
               hitl={

@@ -1,4 +1,4 @@
-import type { EditorTab, ExtToHost, HostToExt, TerminalState } from "@shared";
+import type { ActiveFile, EditorTab, ExtToHost, HostToExt, TerminalState } from "@shared";
 
 type Listener = (msg: HostToExt) => void;
 
@@ -32,6 +32,7 @@ export const PIN_EVENT = "opensider-pin";
 export const TABS_EVENT = "opensider-tabs";
 export const WORKSPACE_EVENT = "opensider-workspace";
 export const TERMINAL_EVENT = "opensider-terminal";
+export const ACTIVE_FILE_EVENT = "opensider-active-file";
 
 let latestTabs: EditorTab[] = [];
 export function currentEditorTabs(): EditorTab[] {
@@ -49,6 +50,7 @@ window.addEventListener("message", (event: MessageEvent) => {
         message?: HostToExt;
         attachment?: EditorSelection | null;
         tabs?: EditorTab[];
+        file?: ActiveFile | null;
         state?: TerminalState;
         cwd?: string;
         name?: string;
@@ -70,6 +72,10 @@ window.addEventListener("message", (event: MessageEvent) => {
   if (data.type === "tabs") {
     latestTabs = data.tabs ?? [];
     window.dispatchEvent(new CustomEvent(TABS_EVENT, { detail: latestTabs }));
+    return;
+  }
+  if (data.type === "editor.active") {
+    window.dispatchEvent(new CustomEvent(ACTIVE_FILE_EVENT, { detail: data.file ?? null }));
     return;
   }
   if (data.type === "terminal.state" && data.state) {

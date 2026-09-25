@@ -1156,17 +1156,20 @@ func (h *Host) handlePrompt(msg map[string]any) error {
 		// 会话正在跑、而这次也没有要求打断：保持原有的“忽略”语义，不改老行为。
 		return nil
 	}
+	// Ambient context first, then the ranges the user pinned on purpose, then what they
+	// typed — narrowing from "where I am" to "what I mean".
+	currentFile := formatCurrentFile(msg["currentFile"], msg["attachments"])
 	prefix := formatCodeAttachments(msg["attachments"])
 	h.mu.Lock()
 	runtime.turnDone = make(chan struct{})
 	h.mu.Unlock()
-	// skill 的 `/name` 前缀必须排在**所有东西**前面（包括上面的当前标签页块）：斜杠调用只有
+	// skill 的 `/name` 前缀必须排在**所有东西**前面（包括上面的当前文件块）：斜杠调用只有
 	// 落在最前才会被 CLI 当 skill 用。
 	skillPrefix := strings.TrimSpace(str(msg["skillPrefix"]))
 	if skillPrefix != "" {
 		skillPrefix += "\n\n"
 	}
-	stop, err := runtime.client.Prompt(skillPrefix + prefix + str(msg["text"]))
+	stop, err := runtime.client.Prompt(skillPrefix + currentFile + prefix + str(msg["text"]))
 	interrupted, done := h.endPrompt(runtime)
 	if done != nil {
 		close(done)
@@ -1215,6 +1218,76 @@ func (h *Host) setWorkspace(dir, key, name string) error {
 	log.Log("workspace " + clean)
 	h.sendHello()
 	return nil
+}
+
+// formatCurrentFile renders the ambient "the user is looking at this" block that the
+// panel sends with every prompt, mirroring the `[Current tab]` line the browser build
+// prefixed. One line, no file contents — the agent gets a pointer and its own read tool.
+//
+// It returns "" when there is nothing useful to say, and when the user has already
+// attached exactly the range they are looking at: repeating the location above a code
+// block that spells it out only spends tokens telling the agent the same thing twice.
+func formatCurrentFile(raw any, attachments any) string {
+	file, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	path := str(file["relativePath"])
+	if path == "" {
+		path = str(file["path"])
+	}
+	if path == "" {
+		return ""
+	}
+
+	startLine, endLine := 0, 0
+	if selection, ok := file["selection"].(map[string]any); ok {
+		startLine = intFrom(selection["startLine"])
+		endLine = intFrom(selection["endLine"])
+	}
+	if attachmentCovers(attachments, path, startLine, endLine) {
+		return ""
+	}
+
+	where := fmt.Sprintf("line %d", intFrom(file["line"]))
+	if startLine > 0 && endLine >= startLine {
+		where = fmt.Sprintf("lines %d-%d selected", startLine, endLine)
+	}
+	var extra string
+	if lang := str(file["languageId"]); lang != "" {
+		extra = lang + ", "
+	}
+	if dirty, _ := file["dirty"].(bool); dirty {
+		where += ", unsaved"
+	}
+	return fmt.Sprintf("[Current file] %s — %s%s\n\n", path, extra, where)
+}
+
+// attachmentCovers reports whether an explicit selection chip already pins this exact
+// range of this exact file. A *different* range of the same file does not count: the
+// caret is still telling the agent something the attachment does not.
+func attachmentCovers(raw any, path string, startLine, endLine int) bool {
+	if startLine <= 0 || endLine < startLine {
+		return false
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		other := str(m["relativePath"])
+		if other == "" {
+			other = str(m["path"])
+		}
+		if other == path && intFrom(m["startLine"]) == startLine && intFrom(m["endLine"]) == endLine {
+			return true
+		}
+	}
+	return false
 }
 
 func formatCodeAttachments(raw any) string {

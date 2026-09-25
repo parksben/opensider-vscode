@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import * as vscode from "vscode";
+import { sameActiveFile, Throttle, type ActiveFile } from "@shared";
+import { readActiveFile } from "./active-file";
 import { HostProcess, hostBinary, type HostMessage } from "./host";
 import { readSelection, selectionKey, workspaceCwd, type CodeAttachment } from "./selection";
 import { openEditorTabs, openWorkspaceFile, resolveWorkspaceFile, workspaceIdentity } from "./workspace-files";
@@ -60,6 +62,17 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     onExit: (error) => this.post({ type: "host", message: { type: "status", state: "error", error } }),
   });
   private dismissedKey = "";
+  /**
+   * Last active-file report actually sent. Cursor movement fires constantly, and most
+   * of those events resolve to a report the panel already has.
+   */
+  private lastActiveFile: ActiveFile | null = null;
+  /**
+   * 250ms is short enough that the indicator tracks a tab switch without feeling laggy,
+   * and long enough that holding an arrow key costs four pushes a second rather than
+   * one per repeat.
+   */
+  private readonly activeFilePush = new Throttle(250, () => this.pushActiveFile());
   private pendingPin: CodeAttachment | undefined;
   private started = false;
   private webReady = false;
@@ -131,6 +144,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       this.pushWorkspace();
       this.pushSelection();
       this.pushTabs();
+      this.pushActiveFile();
       if (this.pendingPin) {
         this.post({ type: "pin", attachment: this.pendingPin });
         this.pendingPin = undefined;
@@ -322,6 +336,18 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: "tabs", tabs: openEditorTabs() });
   }
 
+  private pushActiveFile(): void {
+    const file = readActiveFile() ?? null;
+    if (sameActiveFile(file, this.lastActiveFile)) return;
+    this.lastActiveFile = file;
+    this.post({ type: "editor.active", file });
+  }
+
+  noteActiveFile(): void {
+    if (!this.view) return;
+    this.activeFilePush.schedule();
+  }
+
   noteSelection(): void {
     if (!this.view) return;
     this.pushSelection();
@@ -346,6 +372,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   dispose(): void {
+    this.activeFilePush.dispose();
     this.host.stop();
     this.terminals.dispose();
     this.outputs.dispose();
@@ -383,13 +410,23 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("opensider-vscode.focus", () => provider.focus()),
     vscode.commands.registerCommand("opensider-vscode.addSelection", () => provider.pinSelection()),
-    vscode.window.onDidChangeTextEditorSelection(() => provider.noteSelection()),
+    vscode.window.onDidChangeTextEditorSelection(() => {
+      provider.noteSelection();
+      provider.noteActiveFile();
+    }),
     vscode.window.onDidChangeActiveTextEditor(() => {
       provider.noteSelection();
       provider.noteWorkspace();
       provider.noteTabs();
+      provider.noteActiveFile();
     }),
-    vscode.window.tabGroups.onDidChangeTabs(() => provider.noteTabs()),
+    vscode.window.tabGroups.onDidChangeTabs(() => {
+      provider.noteTabs();
+      provider.noteActiveFile();
+    }),
+    // Saving or editing flips the dirty flag, which the indicator shows.
+    vscode.workspace.onDidSaveTextDocument(() => provider.noteActiveFile()),
+    vscode.workspace.onDidChangeTextDocument(() => provider.noteActiveFile()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => provider.noteWorkspace()),
     { dispose: () => provider.dispose() },
   );

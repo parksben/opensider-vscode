@@ -1,4 +1,4 @@
-import type { AgentModeOption, AgentModel, AgentOption, AttachmentItem, ChangedFile, ContextUsage as ContextUsageValue, FsPickMode, SkillItem, TerminalState } from "@shared";
+import type { ActiveFile, AgentModeOption, AgentModel, AgentOption, AttachmentItem, ChangedFile, ContextUsage as ContextUsageValue, FsPickMode, SkillItem, TerminalState } from "@shared";
 import { openInEditor, postExtension, PIN_EVENT, SELECTION_EVENT } from "../bridge";
 import { ArrowDown, AtSign, Check, ChevronDown, Copy, File, FileDown, Folder, FolderPen, GitFork, LoaderCircle, Paperclip, Plus, RefreshCw, Send, Shield, Slash, Square, TriangleAlert, Unlock, X, Zap } from "lucide-react";
 import logoUrl from "../../../assets/icon.svg?url";
@@ -48,6 +48,7 @@ import { IconButton } from "./IconButton";
 import { kindIcon, UserRichText } from "./MentionChip";
 import { Markdown } from "./Markdown";
 import { ImagePreview } from "./ImagePreview";
+import { CurrentFileBar } from "./CurrentFileBar";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { RippleButton } from "./RippleButton";
 import { TextFold } from "./TextFold";
@@ -82,6 +83,9 @@ export function ChatPane({
   onDeleteQueued,
   onSendQueuedNow,
   onEditingQueued,
+  activeFile,
+  shareActiveFile,
+  onShareActiveFile,
   onRevise,
   onCancel,
   onFork,
@@ -138,6 +142,10 @@ export function ChatPane({
   onDeleteQueued: (id: string) => void;
   onSendQueuedNow: (id: string) => void;
   onEditingQueued: (id?: string) => void;
+  /** Ambient context: the editor tab the user is on. Null when none is focused. */
+  activeFile?: ActiveFile | null;
+  shareActiveFile: boolean;
+  onShareActiveFile: (next: boolean) => void;
   onRevise: (messageId: string, text: string, attachments: AttachmentItem[]) => void;
   onCancel: () => void;
   onFork: (messageId: string) => void;
@@ -815,6 +823,12 @@ export function ChatPane({
               </button>
             </div>
           ) : null}
+          <CurrentFileBar
+            locale={locale}
+            file={activeFile ?? undefined}
+            enabled={shareActiveFile}
+            onToggle={onShareActiveFile}
+          />
           {attachments.length > 0 ? (
             <AttachmentChips
               items={attachments}
