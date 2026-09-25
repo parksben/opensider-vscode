@@ -1,6 +1,8 @@
 package paths
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -26,15 +28,32 @@ func SidebarHome() string {
 }
 
 var (
-	workspaceMu  sync.RWMutex
-	workspaceDir string
+	workspaceMu   sync.RWMutex
+	workspaceDir  string
+	workspaceKey  string
+	workspaceName string
 )
 
-// SetWorkspaceDir is the VS Code workspace folder the next ACP session should use.
-func SetWorkspaceDir(dir string) {
+// SetWorkspace records the VS Code window's workspace.
+//
+// `dir` is the cwd an ACP session runs in; in a multi-root workspace it follows the
+// active editor, so it is **not** a stable identity. `key` is that stable identity (the
+// `.code-workspace` file, or the first folder) and is the only thing state buckets are
+// keyed on — otherwise switching tabs between two roots would switch chat histories.
+func SetWorkspace(dir, key, name string) {
 	workspaceMu.Lock()
-	workspaceDir = filepath.Clean(strings.TrimSpace(dir))
+	workspaceDir = cleanDir(dir)
+	workspaceKey = cleanDir(key)
+	workspaceName = strings.TrimSpace(name)
 	workspaceMu.Unlock()
+}
+
+func cleanDir(dir string) string {
+	trimmed := strings.TrimSpace(dir)
+	if trimmed == "" {
+		return ""
+	}
+	return filepath.Clean(trimmed)
 }
 
 func WorkspaceDir() string {
@@ -43,6 +62,114 @@ func WorkspaceDir() string {
 	return workspaceDir
 }
 
+// WorkspaceKey is the stable identity of this window's workspace, or "" when the window
+// has no folder open.
+func WorkspaceKey() string {
+	workspaceMu.RLock()
+	defer workspaceMu.RUnlock()
+	return workspaceKey
+}
+
+func WorkspaceName() string {
+	workspaceMu.RLock()
+	defer workspaceMu.RUnlock()
+	return workspaceName
+}
+
+// WorkspacesDir holds one directory per workspace the user has chatted in.
+func WorkspacesDir() string { return filepath.Join(SidebarHome(), "workspaces") }
+
+// BucketName maps a workspace identity to its directory name under WorkspacesDir.
+//
+// The hash is what makes it collision-free and filesystem-safe; the slug in front of it
+// is purely so a human can `ls ~/.opensider-vscode/workspaces` and recognise the place.
+// Never parse the slug back — it is lossy on purpose.
+func BucketName(key, name string) string {
+	key = cleanDir(key)
+	if key == "" {
+		return ""
+	}
+	// macOS and Windows resolve paths case-insensitively, so two windows that spell the
+	// same folder differently must land in the same bucket.
+	hashed := key
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		hashed = strings.ToLower(hashed)
+	}
+	sum := sha256.Sum256([]byte(hashed))
+	digest := hex.EncodeToString(sum[:])[:12]
+
+	label := strings.TrimSpace(name)
+	if label == "" {
+		label = filepath.Base(key)
+	}
+	return slug(label) + "-" + digest
+}
+
+// slug reduces a workspace's display name to something safe in a directory name on every
+// platform: ASCII word characters only, no leading/trailing dashes, bounded length.
+func slug(label string) string {
+	var b strings.Builder
+	lastDash := true
+	for _, r := range label {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case r == '.' || r == '_' || r == '-':
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		default:
+			// Non-ASCII (a CJK project name, say) has no safe short form; the hash
+			// carries the identity, so collapse it to a separator.
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+		if b.Len() >= 40 {
+			break
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "workspace"
+	}
+	return out
+}
+
+// WorkspaceStateDir is this window's bucket, or "" when no folder is open.
+func WorkspaceStateDir() string {
+	bucket := BucketName(WorkspaceKey(), WorkspaceName())
+	if bucket == "" {
+		return ""
+	}
+	return filepath.Join(WorkspacesDir(), bucket)
+}
+
+// WorkspaceUIStatePath is the per-workspace chat state, or "" when no folder is open.
+func WorkspaceUIStatePath() string {
+	dir := WorkspaceStateDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "ui-state.json")
+}
+
+// WorkspaceMetaPath records which workspace a bucket belongs to, so the hashed directory
+// name is not the only way to tell.
+func WorkspaceMetaPath() string {
+	dir := WorkspaceStateDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "workspace.json")
+}
+
+// GlobalStatePath holds the preferences that are the same in every window.
+func GlobalStatePath() string { return filepath.Join(SidebarHome(), "global-state.json") }
+
 func WriteSessionID(id string) {
 	if err := os.MkdirAll(SidebarHome(), 0o755); err != nil {
 		return
@@ -50,8 +177,16 @@ func WriteSessionID(id string) {
 	_ = os.WriteFile(SessionPath(), []byte(strings.TrimSpace(id)+"\n"), 0o644)
 }
 func SessionPath() string { return filepath.Join(SidebarHome(), "session.json") }
-func UIStatePath() string { return filepath.Join(SidebarHome(), "ui-state.json") }
 func HostLogPath() string { return filepath.Join(SidebarHome(), "host.log") }
+
+// LegacyUIStatePath is the single global state file used before state was split per
+// workspace. It only exists until the one-time migration consumes it.
+func LegacyUIStatePath() string { return filepath.Join(SidebarHome(), "ui-state.json") }
+
+// LegacyClaimPath is where the migration atomically moves the legacy file to claim it.
+// Renaming is the claim: exactly one host can win it, and no lock is left behind if that
+// host is then killed.
+func LegacyClaimPath() string { return filepath.Join(SidebarHome(), "ui-state.json.migrating") }
 
 func RuntimeDir() string { return filepath.Join(SidebarHome(), "runtime") }
 

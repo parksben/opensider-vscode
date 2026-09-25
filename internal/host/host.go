@@ -241,7 +241,7 @@ func (h *Host) sendHello() {
 }
 
 func (h *Host) sendUIState() {
-	state, ok := uistate.LoadMap()
+	state, ok := uistate.Load()
 	if !ok {
 		h.send(map[string]any{"type": "ui.state", "state": nil})
 		return
@@ -876,7 +876,7 @@ func (h *Host) dispatch(typ string, msg map[string]any) error {
 		h.acceptStateSet(msg)
 		return nil
 	case "workspace.set":
-		return h.setWorkspace(str(msg["cwd"]))
+		return h.setWorkspace(str(msg["cwd"]), str(msg["key"]), str(msg["name"]))
 	case "hello":
 		h.sendHello()
 		h.mu.Lock()
@@ -1186,7 +1186,7 @@ func (h *Host) handlePrompt(msg map[string]any) error {
 	return nil
 }
 
-func (h *Host) setWorkspace(dir string) error {
+func (h *Host) setWorkspace(dir, key, name string) error {
 	clean := strings.TrimSpace(dir)
 	if clean == "" {
 		return errors.New("workspace cwd is empty")
@@ -1195,7 +1195,15 @@ func (h *Host) setWorkspace(dir string) error {
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("workspace is not a directory: %s", clean)
 	}
-	paths.SetWorkspaceDir(clean)
+	if strings.TrimSpace(key) == "" {
+		// An older extension does not send the stable identity. The cwd is the best
+		// stand-in; in a single-root window they are the same path anyway.
+		key = clean
+	}
+	paths.SetWorkspace(clean, key, name)
+	// Only now is the destination bucket known, so this is the first moment the
+	// one-time move of the pre-split state file can happen.
+	uistate.Migrate()
 	h.mu.Lock()
 	runtimes := append([]*acpRuntime{}, h.runtimes...)
 	h.mu.Unlock()

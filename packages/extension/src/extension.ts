@@ -5,7 +5,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { HostProcess, hostBinary, type HostMessage } from "./host";
 import { readSelection, selectionKey, workspaceCwd, type CodeAttachment } from "./selection";
-import { openEditorTabs, openWorkspaceFile, resolveWorkspaceFile } from "./workspace-files";
+import { openEditorTabs, openWorkspaceFile, resolveWorkspaceFile, workspaceIdentity } from "./workspace-files";
 import { OutputDocuments, OUTPUT_SCHEME } from "./output-doc";
 import { TerminalRegistry } from "./terminal";
 
@@ -28,6 +28,11 @@ function panelHtml(webview: vscode.Webview, extensionPath: string): string {
   const dist = path.join(extensionPath, "dist", "panel");
   let html = readFileSync(path.join(dist, "index.html"), "utf8");
   const nonce = Math.random().toString(36).slice(2);
+  // The panel's localStorage cache is shared by every window of this extension, so it
+  // has to be scoped to the workspace before the first read. Posting the identity would
+  // arrive a frame or two late and the panel would briefly read another project's
+  // chats, so it is baked into the document instead.
+  const boot = JSON.stringify(workspaceIdentity()).replace(/</g, "\\u003c");
   html = html.replace(/(src|href)="([^"]+)"/g, (full, attr: string, url: string) => {
     if (/^(https?:|data:)/.test(url)) return full;
     const file = path.join(dist, url.replace(/^\.\//, ""));
@@ -41,7 +46,11 @@ function panelHtml(webview: vscode.Webview, extensionPath: string): string {
     `script-src 'nonce-${nonce}'`,
   ].join("; ");
   html = html.replace(/<script\b/g, `<script nonce="${nonce}"`);
-  return html.replace("</head>", `<meta http-equiv="Content-Security-Policy" content="${csp}">\n</head>`);
+  return html.replace(
+    "</head>",
+    `<meta http-equiv="Content-Security-Policy" content="${csp}">\n` +
+      `<script nonce="${nonce}">window.__opensiderWorkspace=${boot};</script>\n</head>`,
+  );
 }
 
 class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -290,9 +299,12 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private pushWorkspace(): void {
     const cwd = workspaceCwd();
-    if (cwd) this.host.send({ type: "workspace.set", cwd });
-    const name = cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd) : "";
-    this.post({ type: "workspace", cwd: cwd ?? "", name });
+    const identity = workspaceIdentity();
+    // `cwd` is where the agent runs; `key` is what state is filed under. They differ in
+    // a multi-root workspace, where cwd follows the active editor.
+    if (cwd) this.host.send({ type: "workspace.set", cwd, key: identity.key, name: identity.name });
+    const name = identity.name || (cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd) : "");
+    this.post({ type: "workspace", cwd: cwd ?? "", name, key: identity.key });
   }
 
   private pushSelection(): void {

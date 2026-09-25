@@ -193,7 +193,12 @@ export type CodeAttachment = {
 
 export type ExtToHost =
   | { type: "hello" }
-  | { type: "workspace.set"; cwd: string }
+  /**
+   * `cwd` is where an ACP session runs and follows the active editor in a multi-root
+   * workspace. `key` is the window's stable identity and is what persisted state is
+   * filed under, so history does not move when the user switches roots.
+   */
+  | { type: "workspace.set"; cwd: string; key?: string; name?: string }
   | { type: "agents.detect" }
   | { type: "skills.refresh" }
   | {

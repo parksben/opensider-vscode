@@ -53,6 +53,7 @@ import {
   parseHostState,
   preferHostState,
   saveState,
+  setStateScope,
   SESSION_DRAWER_DEFAULT,
   settleFinishedContent,
   isPlaceholderTitle,
@@ -124,6 +125,8 @@ export function App() {
   const [terminals, setTerminals] = useState<Record<string, TerminalState>>({});
   /** 当前 VS Code 工作区根目录，用于把 Agent 写过的绝对路径收敛成相对路径展示。 */
   const [workspaceCwd, setWorkspaceCwd] = useState("");
+  /** id → ISO time for sessions the user deleted; see PersistedState.deletedSessions. */
+  const [deletedSessions, setDeletedSessions] = useState<Record<string, string>>({});
   const [runningIds, setRunningIds] = useState<string[]>([]);
   const [queues, setQueues] = useState<Record<string, QueuedMessage[]>>({});
   const [permissions, setPermissions] = useState<Record<string, PermissionRequest>>({});
@@ -234,6 +237,7 @@ export function App() {
     setOnboardingCompleted(state.onboardingCompleted);
     setSessionsOpen(state.sessionsOpen);
     setDrawerWidth(state.sessionDrawerWidth);
+    setDeletedSessions(state.deletedSessions);
     loadedRef.current = { ...state, sessions: nextSessions, selectedId: nextSelectedId };
     // 会话列表被整表替换（host 镜像灌回）：悬挂的请求可能指向已不存在的本地会话，清掉。
     bindRegistry.current.clear();
@@ -937,6 +941,10 @@ export function App() {
   handleHostRef.current = handleHost;
 
   useEffect(() => {
+    // The extension bakes the workspace identity into the document precisely so this
+    // runs before the first cache read: localStorage is shared by every window of the
+    // extension, and an unscoped read here would surface another project's chats.
+    setStateScope(window.__opensiderWorkspace?.key ?? "");
     void loadState().then((state) => {
       hydratedRef.current = true;
       const pendingHost = pendingHostStateRef.current;
@@ -973,6 +981,7 @@ export function App() {
       sessionsOpen,
       sessionDrawerWidth: drawerWidth,
       sessions,
+      deletedSessions,
     });
     void saveState(payload).then(() => {
       if (!hostMirrorReady) return;
@@ -994,6 +1003,7 @@ export function App() {
     sessionsOpen,
     drawerWidth,
     sessions,
+    deletedSessions,
   ]);
 
   useLayoutEffect(() => {
@@ -1412,6 +1422,9 @@ export function App() {
     if (editingQueueRef.current?.sessionId === id) editingQueueRef.current = null;
     bindRegistry.current.dropLocal(id);
     pendingRegen.current.delete(id);
+    // Another window on this workspace may still hold this session in memory. The
+    // tombstone is what stops its next mirror from handing the session back.
+    setDeletedSessions((current) => ({ ...current, [id]: new Date().toISOString() }));
     const remaining = sessionsRef.current.filter((session) => session.id !== id);
     if (remaining.length > 0) {
       setSessions(remaining);

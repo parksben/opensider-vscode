@@ -6,7 +6,36 @@ import { isBenignStreamCloseText, stripBenignStreamClose } from "./stream-close"
 import { stampToolParts } from "./tool-label";
 import { detectBrowserTheme, isThemePreference, readCachedTheme, type ThemePreference } from "./theme";
 
-export const STATE_KEY = "opensider-vscode/state";
+/** The pre-split cache key. Every window of the extension shared this one entry. */
+export const LEGACY_STATE_KEY = "opensider-vscode/state";
+
+/**
+ * The hot cache lives in the webview's `localStorage`, which is shared by every window
+ * running this extension. Unscoped, two projects fight over one entry and each window
+ * shows whichever one wrote last. The workspace's absolute path is the scope: it needs
+ * no hashing to be unique and stays readable in the devtools storage inspector.
+ *
+ * `chrome.storage.local` in the shim already namespaces everything under
+ * `opensider-vscode/`, so this must not repeat it.
+ */
+export function stateCacheKey(workspaceKey: string): string {
+  return `state:${workspaceKey}`;
+}
+
+/**
+ * Set before the first load, from the identity the extension bakes into the document.
+ * Empty means no folder is open, and a folder-less window caches nothing: the host
+ * refuses to start an agent without a workspace, so any chat written there could never
+ * be continued. See `Save` in internal/uistate.
+ */
+let cacheKey = "";
+
+export function setStateScope(workspaceKey: string): void {
+  cacheKey = workspaceKey ? stateCacheKey(workspaceKey) : "";
+  // The unscoped entry can never be read again and is a full copy of whichever project
+  // happened to write last, so drop it rather than leave stale chats in storage.
+  void chrome.storage.local.remove(LEGACY_STATE_KEY);
+}
 
 export type StoredMessage = {
   id: string;
@@ -122,6 +151,15 @@ export type PersistedState = {
   sessionsOpen?: boolean;
   sessionDrawerWidth?: number;
   sessions: Array<Omit<Session, "messages"> & { messages: StoredMessage[] }>;
+  /**
+   * Sessions the user deleted, id → ISO time.
+   *
+   * Two windows can be open on one workspace, and the host merges their saves so
+   * neither loses the other's chats. Without a record of the deletion that merge would
+   * hand a deleted session straight back the next time the other window — which still
+   * holds it in memory — mirrors its state. The host prunes these after 30 days.
+   */
+  deletedSessions?: Record<string, string>;
 };
 
 export function settleFinishedContent(content: ChatPart[]): ChatPart[] {
@@ -388,6 +426,7 @@ export type LoadedState = {
   sessionsOpen: boolean;
   sessionDrawerWidth: number;
   sessions: Session[];
+  deletedSessions: Record<string, string>;
 };
 
 function migrateSessionBindings(session: Session, providerId: string): Session {
@@ -417,6 +456,7 @@ function emptyLoaded(savedAt?: string): LoadedState {
     sessionsOpen: false,
     sessionDrawerWidth: SESSION_DRAWER_DEFAULT,
     sessions: [],
+    deletedSessions: {},
   };
 }
 
@@ -453,6 +493,7 @@ export function fromPersisted(data: PersistedState | undefined | null): LoadedSt
     sessionsOpen: data.sessionsOpen === true,
     sessionDrawerWidth: clampSessionDrawerWidth(data.sessionDrawerWidth ?? SESSION_DRAWER_DEFAULT),
     sessions,
+    deletedSessions: data.deletedSessions ?? {},
   };
 }
 
@@ -475,6 +516,7 @@ export function toPersistedState(state: {
   sessionsOpen: boolean;
   sessionDrawerWidth: number;
   sessions: Session[];
+  deletedSessions: Record<string, string>;
 }): PersistedState {
   return {
     version: 1,
@@ -492,17 +534,20 @@ export function toPersistedState(state: {
     sessionsOpen: state.sessionsOpen,
     sessionDrawerWidth: clampSessionDrawerWidth(state.sessionDrawerWidth),
     sessions: state.sessions.map(serializeSession),
+    deletedSessions: Object.keys(state.deletedSessions).length ? state.deletedSessions : undefined,
   };
 }
 
 export async function loadState(): Promise<LoadedState> {
-  const raw = await chrome.storage.local.get(STATE_KEY);
-  return fromPersisted(raw[STATE_KEY] as PersistedState | undefined);
+  if (!cacheKey) return fromPersisted(undefined);
+  const raw = await chrome.storage.local.get(cacheKey);
+  return fromPersisted(raw[cacheKey] as PersistedState | undefined);
 }
 
 export async function saveState(payload: PersistedState): Promise<void> {
+  if (!cacheKey) return;
   try {
-    await chrome.storage.local.set({ [STATE_KEY]: payload });
+    await chrome.storage.local.set({ [cacheKey]: payload });
   } catch (error) {
     // chrome.storage.local 只是热缓存：写失败（配额等）不能连 Host 镜像一起停掉——
     // 权威副本在 ~/.opensider-vscode/ui-state.json，重装后还要靠它灌回。

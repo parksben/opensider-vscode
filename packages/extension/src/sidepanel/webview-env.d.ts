@@ -30,6 +30,16 @@ declare const chrome: {
   };
 };
 
+/**
+ * The workspace this window has open, baked into the document by `panelHtml` in
+ * `src/extension.ts`. It is available synchronously so the first read of the shared
+ * `localStorage` cache is already scoped to the right project. `key` is empty when no
+ * folder is open.
+ */
+interface Window {
+  __opensiderWorkspace?: { key: string; name: string };
+}
+
 declare module "*.svg?url" {
   const url: string;
   export default url;

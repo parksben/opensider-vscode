@@ -21,6 +21,28 @@ function insideWorkspace(uri: vscode.Uri): boolean {
   return vscode.workspace.getWorkspaceFolder(uri) != null;
 }
 
+/** How a window identifies itself when storing state. Empty `key` means no folder open. */
+export type WorkspaceIdentity = { key: string; name: string };
+
+/**
+ * The stable identity of this window's workspace.
+ *
+ * Deliberately not `workspaceCwd()`: that one follows the active editor so an ACP
+ * session runs in the right root of a multi-root workspace, which means it changes as
+ * the user switches tabs. Chat history keyed on it would switch with them.
+ */
+export function workspaceIdentity(): WorkspaceIdentity {
+  const file = vscode.workspace.workspaceFile;
+  if (file) {
+    // A saved `.code-workspace` has a real path; an unsaved multi-root workspace has an
+    // `untitled:` URI, which is still stable for as long as that workspace exists.
+    return { key: file.scheme === "file" ? file.fsPath : file.toString(), name: vscode.workspace.name ?? "" };
+  }
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (folder) return { key: folder.uri.fsPath, name: folder.name };
+  return { key: "", name: "" };
+}
+
 /**
  * Resolves a link or tool argument to a file in the open workspace.
  *
