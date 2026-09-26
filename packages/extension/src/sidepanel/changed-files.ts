@@ -16,6 +16,13 @@ const DELETE_RE = /\b(delete|remove|rm|unlink)\b/;
 const CREATE_RE = /\b(create|new_file|add_file|write_file|touch)\b/;
 const WRITE_RE = /\b(edit|write|delete|move|rename|create|patch|apply|multiedit|notebook|strreplace|search_replace)\b/;
 const READ_RE = /\b(execute|shell|bash|terminal|command|fetch|http|network|search|grep|glob|list|read|view)\b/;
+/** Shell / terminal tools — never file edits, even when the title mentions patch/apply. */
+const EXECUTE_RE = /\b(execute|shell|bash|terminal|command)\b/;
+/** Virtual docs for command output / per-change diffs — not workspace paths. */
+const VIRTUAL_SCHEME_RE = /^(opensider-output|opensider-diff):/i;
+/** Command string leaked as a path label (TerminalCard title / primaryArg). */
+const COMMAND_LINE_RE =
+  /^(?:sudo\s+)?(?:git|npm|npx|pnpm|yarn|bun|node|deno|python\d*|pip\d*|cargo|go|make|cmake|docker|podman|kubectl|curl|wget|bash|sh|zsh|fish|rg|fd|find|ls|cd|cat|sed|awk|jq)\b/i;
 
 const PATH_KEYS = [
   "file_path",
@@ -67,7 +74,13 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 /** Digs the first path-looking string out of a tool's arguments. */
 function pathFromArgs(args: unknown): string {
   const record = asRecord(args);
-  if (!record) return typeof args === "string" ? args.trim() : "";
+  if (!record) {
+    // Bare strings are often the shell command or a patch blob, not a file path.
+    if (typeof args !== "string") return "";
+    const bare = args.trim();
+    if (!bare || /\s/.test(bare) || looksLikePatch(bare) || isNonFilePath(bare)) return "";
+    return bare;
+  }
   for (const key of PATH_KEYS) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -113,16 +126,42 @@ function preferChange(a: ChangedFile["change"], b: ChangedFile["change"]): Chang
   return "modified";
 }
 
+/** True when this tool call is a shell / terminal run (ACP execute or live terminal). */
+export function isExecuteTool(part: ToolPart): boolean {
+  if (part.terminalId) return true;
+  const kind = (part.kind ?? "").toLowerCase();
+  if (kind === "execute") return true;
+  const hay = `${kind} ${part.toolName ?? ""}`.toLowerCase();
+  return EXECUTE_RE.test(hay);
+}
+
 /** True when this tool call wrote to the workspace rather than just reading it. */
 export function isWriteTool(part: ToolPart): boolean {
+  // Same priority as `isWorkspaceWritePermission`: execute always wins over write-ish titles.
+  if (isExecuteTool(part)) return false;
   const hay = `${part.kind ?? ""} ${part.toolName ?? ""}`.toLowerCase();
   if (READ_RE.test(hay) && !WRITE_RE.test(hay)) return false;
   return WRITE_RE.test(hay);
 }
 
+/** Virtual-doc URIs, other schemes, or a shell command used as a faux path label. */
+function isNonFilePath(raw: string): boolean {
+  const trimmed = raw.trim().replace(/^<|>$/g, "");
+  if (!trimmed) return true;
+  if (VIRTUAL_SCHEME_RE.test(trimmed)) return true;
+  // Non-file URI schemes (`opensider-output:/…`, `https://…`). Keep Windows `C:\…`.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !trimmed.startsWith("file:") && !/^[A-Za-z]:[\\/]/.test(trimmed)) {
+    return true;
+  }
+  // Command card title leaked as path — not a workspace file (paths inside the cmd are fine as real edits).
+  if (/\s/.test(trimmed) && COMMAND_LINE_RE.test(trimmed)) return true;
+  return false;
+}
+
 function normalize(raw: string): string {
   const trimmed = raw.trim().replace(/^<|>$/g, "");
   if (!trimmed) return "";
+  if (isNonFilePath(trimmed)) return "";
   if (trimmed.startsWith("file://")) {
     try {
       return decodeURIComponent(new URL(trimmed).pathname);
@@ -130,7 +169,6 @@ function normalize(raw: string): string {
       return "";
     }
   }
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return "";
   return trimmed;
 }
 

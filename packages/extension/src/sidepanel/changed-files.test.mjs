@@ -172,3 +172,116 @@ test("statsFromGitPatch ignores ---/+++ headers", () => {
   );
   assert.deepEqual(stats, { additions: 1, deletions: 1 });
 });
+
+test("execute tool whose title/path is the shell command produces no file row", () => {
+  const command =
+    "git stash show -p -- docs/api/frontend-api.md server/ide_core/internal/rest/builders.go";
+  const files = changedFilesOf(
+    {
+      id: "m1",
+      role: "assistant",
+      createdAt: new Date(),
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "x1",
+          toolName: command,
+          kind: "execute",
+          status: "completed",
+          args: { command },
+          primaryArg: command,
+          content: [
+            {
+              type: "diff",
+              path: "opensider-output:/x1/git.log",
+              oldText: "",
+              newText: "$ " + command + "\n(output)",
+            },
+          ],
+        },
+        {
+          type: "tool-call",
+          toolCallId: "x2",
+          toolName: "git diff 'stash@{0}^1' 'stash@{0}' -- docs/api/frontend-api.md",
+          kind: "execute",
+          status: "completed",
+          args: {
+            command: "git diff 'stash@{0}^1' 'stash@{0}' -- docs/api/frontend-api.md",
+          },
+          primaryArg: "git diff 'stash@{0}^1' 'stash@{0}' -- docs/api/frontend-api.md",
+        },
+      ],
+    },
+    "/repo",
+  );
+  assert.equal(files.length, 0);
+});
+
+test("opensider-diff URI is not listed as a changed file", () => {
+  const files = changedFilesOf(
+    {
+      id: "m1",
+      role: "assistant",
+      createdAt: new Date(),
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "d1",
+          toolName: "Edit",
+          kind: "edit",
+          status: "completed",
+          args: { path: "opensider-diff:/before/1/builders.go" },
+          content: [
+            {
+              type: "diff",
+              path: "opensider-diff:/after/1/builders.go",
+              oldText: "a",
+              newText: "b",
+            },
+          ],
+        },
+      ],
+    },
+    "/repo",
+  );
+  assert.equal(files.length, 0);
+});
+
+test("real edit still produces a files-changed row beside execute tools", () => {
+  const command = "git stash show -p -- docs/api/frontend-api.md";
+  const files = changedFilesOf(
+    {
+      id: "m1",
+      role: "assistant",
+      createdAt: new Date(),
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "x1",
+          toolName: command,
+          kind: "execute",
+          status: "completed",
+          args: { command },
+          primaryArg: command,
+        },
+        {
+          type: "tool-call",
+          toolCallId: "e1",
+          toolName: "Edit",
+          kind: "edit",
+          status: "completed",
+          args: {
+            file_path: "server/ide_core/internal/rest/builders.go",
+            old_string: "old",
+            new_string: "new",
+          },
+        },
+      ],
+    },
+    "/repo",
+  );
+  assert.equal(files.length, 1);
+  assert.equal(files[0]?.relativePath, "server/ide_core/internal/rest/builders.go");
+  assert.equal(files[0]?.additions, 1);
+  assert.equal(files[0]?.deletions, 1);
+});
