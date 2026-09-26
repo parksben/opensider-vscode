@@ -12,6 +12,11 @@ export type ToolPart = {
   toolName: string;
   args: unknown;
   result?: unknown;
+  /**
+   * ACP `tool_call` / `tool_call_update` `content` blocks (diffs, terminals, text).
+   * Kept separate from `result` (`rawOutput`) so a raw payload cannot erase the diff.
+   */
+  content?: unknown;
   status?: ToolStatus;
   kind?: string;
   primaryArg?: string;

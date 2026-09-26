@@ -153,7 +153,7 @@ const copy = {
     unpinSession: "Unpin",
     resizeSessionSidebar: "Resize sessions",
     rename: "Rename",
-    // The ambient "current file" strip above the composer (see CurrentFileBar).
+    // The active-file chip in the attachment row (see ActiveFileChip).
     activeFileShared: "Agent can see this file",
     activeFileHidden: "Hidden from Agent",
     activeFileStopSharing: "Stop including the current file",

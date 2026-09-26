@@ -94,6 +94,25 @@ export function openInEditor(path: string, startLine?: number, endLine?: number)
   postExtension({ type: "open", path, startLine, endLine });
 }
 
+/**
+ * Opens a per-turn file change in the VS Code diff editor (before → after for
+ * that tool call). Ordinary `openInEditor` / http links are unchanged.
+ */
+export function openChangeDiff(file: {
+  path: string;
+  change: "created" | "modified" | "deleted";
+  oldText?: string | null;
+  newText?: string | null;
+}): void {
+  postExtension({
+    type: "openDiff",
+    path: file.path,
+    change: file.change,
+    oldText: file.oldText,
+    newText: file.newText,
+  });
+}
+
 export function connectSidebar(onMessage: Listener): {
   send: (msg: ExtToHost) => void;
   reconnect: () => void;

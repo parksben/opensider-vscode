@@ -14,15 +14,22 @@ export function RippleButton({
   className = "",
   children,
   variant = "ghost",
+  hoverBg = true,
   onPointerDown,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode;
   /** primary 用于强调色实心按钮（接受计划 / 继续 / 确认等）。 */
   variant?: "ghost" | "primary";
+  /**
+   * When false, skip the ghost hover wash — used by chip label buttons so the parent
+   * chip can paint a single full-row hover instead.
+   */
+  hoverBg?: boolean;
 }) {
   const { ripples, spawn, done } = useRipple();
-  const tone = variant === "primary" ? PRIMARY_HOVER : "hover:bg-[var(--hover)]";
+  const tone =
+    variant === "primary" ? PRIMARY_HOVER : hoverBg ? "hover:bg-[var(--hover)]" : "";
   return (
     <button
       type="button"

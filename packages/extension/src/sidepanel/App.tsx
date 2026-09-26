@@ -128,7 +128,7 @@ export function App() {
   const [workspaceCwd, setWorkspaceCwd] = useState("");
   /** id → ISO time for sessions the user deleted; see PersistedState.deletedSessions. */
   const [deletedSessions, setDeletedSessions] = useState<Record<string, string>>({});
-  const [shareActiveFile, setShareActiveFile] = useState(true);
+  const [shareActiveFile, setShareActiveFile] = useState(false);
   /**
    * The file the user is looking at. The ref is the truth the prompt reads; the state
    * mirror only moves when something the composer *draws* changes, so a caret walking
@@ -284,7 +284,8 @@ export function App() {
     const requestId = crypto.randomUUID();
     bindRegistry.current.add(requestId, localId, "prompt");
     // Ambient editor context, read at send time so it reflects where the user actually
-    // was — unless they muted it for this workspace, or already pinned that exact range.
+    // was — only when the active-file chip is included, and not when a chip already pins
+    // that exact range.
     const currentFile = shareActiveFileRef.current
       ? activeFileForPrompt(activeFileRef.current, attachments)
       : undefined;
@@ -488,6 +489,9 @@ export function App() {
       const file = ((event as CustomEvent).detail as ActiveFile | null) ?? null;
       const previous = activeFileRef.current;
       activeFileRef.current = file;
+      // Switching to a different path (or clearing the editor) starts excluded. The first
+      // report after load is not a switch — keep whatever the session already held.
+      if (previous?.path && previous.path !== file?.path) setShareActiveFile(false);
       if (!sameActiveFileDisplay(previous, file)) setActiveFileView(file);
     };
     window.addEventListener(WORKSPACE_EVENT, onWorkspace);
@@ -1279,6 +1283,25 @@ export function App() {
       }, timeoutMs);
     });
 
+  /** Explorer / editor URI drops: attach by real path, no byte copy. */
+  const onAttachPaths = async (paths: string[]) => {
+    if (paths.length === 0) return [] as AttachmentItem[];
+    const requestId = crypto.randomUUID();
+    const pending = waitForHostReply(requestId, HOST_FILE_TIMEOUT_MS);
+    sendRef.current({ type: "fs.attachPaths", requestId, paths });
+    const items = await pending;
+    if (!items) {
+      setNotice(t(localeRef.current, "hostTimeout"));
+      return [] as AttachmentItem[];
+    }
+    if (items.length === 0) {
+      setNotice(t(localeRef.current, "uploadEmpty"));
+      return [] as AttachmentItem[];
+    }
+    setNotice(undefined);
+    return items;
+  };
+
   const onPasteImages = async (files: File[]) => {
     const items: AttachmentItem[] = [];
     for (const [index, file] of files.entries()) {
@@ -1651,6 +1674,7 @@ export function App() {
               onPickAttachments={onPickAttachments}
               onPasteImages={onPasteImages}
               onUploadFiles={onUploadFiles}
+              onAttachPaths={onAttachPaths}
               onPreviewImage={onPreviewImage}
               onModel={onModel}
               agentMode={agentMode}

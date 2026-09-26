@@ -161,12 +161,9 @@ export type PersistedState = {
    */
   deletedSessions?: Record<string, string>;
   /**
-   * Whether the `[Current file]` block goes out with prompts. Default on.
-   *
-   * Absent from `globalKeys` in internal/uistate, so it is per-workspace, on the same
-   * reasoning as the permission policy: it governs what leaves about *this* codebase.
-   * A repo where you would rather not stream your cursor around should not have to be
-   * re-muted every time you open another one.
+   * Whether the `[Current file]` block goes out with prompts. Default off — the user
+   * opts in via the active-file chip. Absent from `globalKeys` in internal/uistate, so
+   * it is per-workspace when persisted; path changes still reset the in-memory toggle.
    */
   shareActiveFile?: boolean;
 };
@@ -469,7 +466,7 @@ function emptyLoaded(savedAt?: string): LoadedState {
     sessionDrawerWidth: SESSION_DRAWER_DEFAULT,
     sessions: [],
     deletedSessions: {},
-    shareActiveFile: true,
+    shareActiveFile: false,
   };
 }
 
@@ -507,7 +504,7 @@ export function fromPersisted(data: PersistedState | undefined | null): LoadedSt
     sessionDrawerWidth: clampSessionDrawerWidth(data.sessionDrawerWidth ?? SESSION_DRAWER_DEFAULT),
     sessions,
     deletedSessions: data.deletedSessions ?? {},
-    shareActiveFile: data.shareActiveFile !== false,
+    shareActiveFile: data.shareActiveFile === true,
   };
 }
 
@@ -550,7 +547,7 @@ export function toPersistedState(state: {
     sessionDrawerWidth: clampSessionDrawerWidth(state.sessionDrawerWidth),
     sessions: state.sessions.map(serializeSession),
     deletedSessions: Object.keys(state.deletedSessions).length ? state.deletedSessions : undefined,
-    shareActiveFile: state.shareActiveFile ? undefined : false,
+    shareActiveFile: state.shareActiveFile || undefined,
   };
 }
 

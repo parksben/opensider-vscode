@@ -8,6 +8,7 @@ import { readActiveFile } from "./active-file";
 import { HostProcess, hostBinary, type HostMessage } from "./host";
 import { readSelection, selectionKey, workspaceCwd, type CodeAttachment } from "./selection";
 import { openEditorTabs, openWorkspaceFile, resolveWorkspaceFile, workspaceIdentity } from "./workspace-files";
+import { DiffDocuments, DIFF_SCHEME } from "./diff-doc";
 import { OutputDocuments, OUTPUT_SCHEME } from "./output-doc";
 import { TerminalRegistry } from "./terminal";
 
@@ -15,6 +16,13 @@ type WebviewMessage =
   | { type: "ready" }
   | { type: "host"; message: HostMessage }
   | { type: "open"; path: string; startLine?: number; endLine?: number }
+  | {
+      type: "openDiff";
+      path: string;
+      change: "created" | "modified" | "deleted";
+      oldText?: string | null;
+      newText?: string | null;
+    }
   | { type: "openExternal"; url: string }
   | { type: "terminal.show"; terminalId: string }
   | { type: "output.open"; id: string; command: string; output: string }
@@ -77,6 +85,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   private started = false;
   private webReady = false;
   private readonly outputs = new OutputDocuments();
+  private readonly diffs = new DiffDocuments();
   private readonly terminals = new TerminalRegistry((state) =>
     this.post({ type: "terminal.state", state }),
   );
@@ -183,6 +192,15 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       this.dismissedKey = message.key;
       return;
     }
+    if (message.type === "openDiff") {
+      void this.diffs.open({
+        path: message.path,
+        change: message.change,
+        oldText: message.oldText,
+        newText: message.newText,
+      });
+      return;
+    }
     if (message.type === "open") {
       const target = resolveWorkspaceFile(message.path);
       void openWorkspaceFile(
@@ -224,6 +242,13 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       void this.pickFiles(requestId, typeof message.mode === "string" ? message.mode : "mixed");
       return true;
     }
+    if (type === "fs.attachPaths") {
+      const paths = Array.isArray(message.paths)
+        ? message.paths.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+        : [];
+      void this.attachPaths(requestId, paths);
+      return true;
+    }
     if (type === "fs.preview") {
       void this.previewFile(requestId, typeof message.path === "string" ? message.path : "");
       return true;
@@ -246,17 +271,39 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       this.post({ type: "host", message: { type: "fs.picked", requestId, items: [], cancelled: true } });
       return;
     }
-    const items = await Promise.all(
-      uris.map(async (uri) => {
-        const info = await stat(uri.fsPath);
-        return {
-          path: uri.fsPath,
-          name: path.basename(uri.fsPath),
-          kind: info.isDirectory() ? "folder" : "file",
-        };
-      }),
-    );
-    this.post({ type: "host", message: { type: "fs.picked", requestId, items } });
+    const items = await Promise.all(uris.map(async (uri) => this.attachmentForPath(uri.fsPath)));
+    this.post({
+      type: "host",
+      message: { type: "fs.picked", requestId, items: items.filter((item) => item !== null) },
+    });
+  }
+
+  /**
+   * Explorer / editor URI drops: the webview already has real paths, so just classify them
+   * (file / folder / image) and hand chips back. No copy, no focus change.
+   */
+  private async attachPaths(requestId: string, paths: string[]): Promise<void> {
+    const items = await Promise.all(paths.map((file) => this.attachmentForPath(file)));
+    this.post({
+      type: "host",
+      message: { type: "fs.picked", requestId, items: items.filter((item) => item !== null) },
+    });
+  }
+
+  private async attachmentForPath(
+    file: string,
+  ): Promise<{ path: string; name: string; kind: "image" | "file" | "folder"; relativePath: string } | null> {
+    try {
+      const info = await stat(file);
+      const name = path.basename(file);
+      // Same as editor tabs / active file: absolute when the path is outside the workspace.
+      const relativePath = vscode.workspace.asRelativePath(file, false);
+      if (info.isDirectory()) return { path: file, name, kind: "folder", relativePath };
+      const kind = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name) ? "image" : "file";
+      return { path: file, name, kind, relativePath };
+    } catch {
+      return null;
+    }
   }
 
   private async previewFile(requestId: string, file: string): Promise<void> {
@@ -381,6 +428,10 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   outputProvider(): OutputDocuments {
     return this.outputs;
   }
+
+  diffProvider(): DiffDocuments {
+    return this.diffs;
+  }
 }
 
 /**
@@ -405,6 +456,8 @@ export function activate(context: vscode.ExtensionContext): void {
   void installSkill(context);
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(OUTPUT_SCHEME, provider.outputProvider()),
+    vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, provider.diffProvider()),
+    provider.diffProvider(),
     vscode.window.registerWebviewViewProvider(VIEW_ID, provider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),

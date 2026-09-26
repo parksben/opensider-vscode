@@ -11,10 +11,29 @@ function changeIcon(change: ChangedFile["change"]) {
   return FilePen;
 }
 
+function DiffStats({ additions, deletions }: { additions?: number; deletions?: number }) {
+  const showAdd = additions != null && additions > 0;
+  const showDel = deletions != null && deletions > 0;
+  if (!showAdd && !showDel) return null;
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-1.5 tabular-nums">
+      {showAdd ? (
+        <span className="text-[var(--vscode-gitDecoration-addedResourceForeground,var(--muted))]">
+          +{additions}
+        </span>
+      ) : null}
+      {showDel ? (
+        <span className="text-[var(--vscode-gitDecoration-deletedResourceForeground,var(--muted))]">
+          -{deletions}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /**
  * The files this turn wrote, the way Copilot Chat shows them: one collapsible block under
- * the answer, each row opening that file in a tab. Deleted files are listed but not
- * clickable — there is nothing left to open.
+ * the answer. Each row opens a per-change diff (before → after for that tool call).
  */
 export function FilesChanged({
   locale,
@@ -52,15 +71,15 @@ export function FilesChanged({
             return (
               <li key={`${file.change}:${file.relativePath}`}>
                 <RippleButton
-                  disabled={gone}
-                  title={file.path}
+                  title={file.relativePath}
                   onClick={() => onOpen(file)}
                   className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] ${
-                    gone ? "cursor-default text-[var(--muted)] line-through" : "text-[var(--text)]"
+                    gone ? "text-[var(--muted)] line-through" : "text-[var(--text)]"
                   }`}
                 >
                   <Icon size={12} className="shrink-0 text-[var(--muted)]" />
                   <span className="min-w-0 flex-1 truncate">{file.relativePath}</span>
+                  <DiffStats additions={file.additions} deletions={file.deletions} />
                 </RippleButton>
               </li>
             );

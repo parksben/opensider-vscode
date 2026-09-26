@@ -82,6 +82,20 @@ export type ChangedFile = {
   path: string;
   relativePath: string;
   change: "created" | "modified" | "deleted";
+  /** Line additions for this turn's edit. Omitted when the diff cannot be measured. */
+  additions?: number;
+  /** Line deletions for this turn's edit. Omitted when the diff cannot be measured. */
+  deletions?: number;
+  /**
+   * Snapshot of the file before this edit (`null` = created / empty left side).
+   * Used to open a per-change diff; omitted when the tool call carried no before text.
+   */
+  oldText?: string | null;
+  /**
+   * Snapshot of the file after this edit (`null` = deleted / empty right side).
+   * Used to open a per-change diff; omitted when the tool call carried no after text.
+   */
+  newText?: string | null;
 };
 
 export type AgentModel = {
@@ -262,6 +276,8 @@ export type ExtToHost =
   | { type: "session.use"; sessionId: string; requestId?: string }
   | { type: "session.fork"; sessionId: string; requestId?: string }
   | { type: "fs.pick"; requestId: string; mode?: FsPickMode }
+  /** Attach existing workspace paths (explorer / editor URI drops) without copying bytes. */
+  | { type: "fs.attachPaths"; requestId: string; paths: string[] }
   | { type: "fs.upload"; requestId: string; name: string; dir?: string; base64: string }
   | { type: "fs.save"; requestId: string; name?: string; imageBase64: string; mime: "image/jpeg" }
   | { type: "fs.preview"; requestId: string; path: string }

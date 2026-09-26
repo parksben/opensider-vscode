@@ -95,6 +95,32 @@ function terminalIdOf(update: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+function isDiffContentItem(item: unknown): boolean {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+  const record = item as Record<string, unknown>;
+  if (record.type === "diff") return true;
+  if (record.oldText !== undefined || record.newText !== undefined || record.patch != null) return true;
+  if (record.type === "content" && record.content && typeof record.content === "object") {
+    return isDiffContentItem(record.content);
+  }
+  return false;
+}
+
+/**
+ * ACP `tool_call_update.content` replaces the whole array. Some agents follow a
+ * diff with a plain status text block, which would wipe the before/after we need
+ * for +/- stats — keep prior diff items when the update carries none.
+ */
+function mergeToolContent(previous: unknown, next: unknown): unknown {
+  if (next === undefined) return previous;
+  const prevItems = Array.isArray(previous) ? previous : previous != null ? [previous] : [];
+  const nextItems = Array.isArray(next) ? next : next != null ? [next] : [];
+  const prevDiffs = prevItems.filter(isDiffContentItem);
+  const nextHasDiff = nextItems.some(isDiffContentItem);
+  if (nextHasDiff || prevDiffs.length === 0) return next;
+  return [...prevDiffs, ...nextItems];
+}
+
 export function applyAcpUpdate(
   messages: ChatMessage[],
   update: Record<string, unknown>,
@@ -133,6 +159,9 @@ export function applyAcpUpdate(
       toolName: String(update.title ?? update.kind ?? "tool"),
       args: update.rawInput ?? update.input ?? {},
       result: update.rawOutput,
+      // Diffs live here (`type: "diff"`). Never fold them into `result` — rawOutput wins
+      // that slot and would drop the before/after text the files-changed card needs.
+      content: update.content,
       status: (update.status as ToolStatus | undefined) ?? "pending",
       kind: update.kind ? String(update.kind) : undefined,
       terminalId: terminalIdOf(update),
@@ -155,7 +184,8 @@ export function applyAcpUpdate(
       ...current,
       toolName: update.title ? String(update.title) : current.toolName,
       args: update.rawInput ?? update.input ?? current.args,
-      result: update.rawOutput ?? update.content ?? current.result,
+      result: update.rawOutput !== undefined ? update.rawOutput : current.result,
+      content: update.content !== undefined ? mergeToolContent(current.content, update.content) : current.content,
       status: (update.status as ToolStatus | undefined) ?? current.status,
       kind: update.kind ? String(update.kind) : current.kind,
       terminalId: terminalIdOf(update) ?? current.terminalId,

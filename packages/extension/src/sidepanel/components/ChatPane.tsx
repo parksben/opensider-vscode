@@ -1,5 +1,5 @@
 import type { ActiveFile, AgentModeOption, AgentModel, AgentOption, AttachmentItem, ChangedFile, ContextUsage as ContextUsageValue, FsPickMode, SkillItem, TerminalState } from "@shared";
-import { openInEditor, postExtension, PIN_EVENT, SELECTION_EVENT } from "../bridge";
+import { openChangeDiff, postExtension, PIN_EVENT, SELECTION_EVENT } from "../bridge";
 import { ArrowDown, AtSign, Check, ChevronDown, Copy, File, FileDown, Folder, FolderPen, GitFork, LoaderCircle, Paperclip, Plus, RefreshCw, Send, Shield, Slash, Square, TriangleAlert, Unlock, X, Zap } from "lucide-react";
 import logoUrl from "../../../assets/icon.svg?url";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -19,22 +19,23 @@ import {
   type ComposerCarry,
 } from "../composer-clipboard";
 import {
+  DRAG_TICK_MS,
   MAX_DROP_FILES,
   NO_DRAG,
-  RECLAIM_MS,
   collectDrop,
+  dragCarriesExplorerPaths,
   dragCarriesFiles,
   emptySkips,
-  isReclaim,
+  forceShiftKey,
   nextDragOverlay,
-  pathsFromDrop,
-  reclaimFrame,
+  pathsFromDropAsync,
   walkEntry,
   type DragOverlay,
   type DragSignal,
   type DropPlan,
   type DroppedFile,
 } from "../file-drop";
+import { startParkedUnparkWatch } from "../webview-unpark";
 import { stripEnvPrompt, textOf, type AgentMode } from "../persist";
 import { useRipple } from "../useRipple";
 import type { QueuedMessage } from "../queued-message";
@@ -48,7 +49,7 @@ import { IconButton } from "./IconButton";
 import { kindIcon, UserRichText } from "./MentionChip";
 import { Markdown } from "./Markdown";
 import { ImagePreview } from "./ImagePreview";
-import { CurrentFileBar } from "./CurrentFileBar";
+import { ActiveFileChip, pathLeaf } from "./ActiveFileChip";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { RippleButton } from "./RippleButton";
 import { TextFold } from "./TextFold";
@@ -93,6 +94,7 @@ export function ChatPane({
   onPickAttachments,
   onPasteImages,
   onUploadFiles,
+  onAttachPaths,
   onPreviewImage,
   onModel,
   agentMode,
@@ -153,6 +155,8 @@ export function ChatPane({
   onPickAttachments: (mode?: FsPickMode) => Promise<AttachmentItem[]>;
   onPasteImages: (files: File[]) => Promise<AttachmentItem[]>;
   onUploadFiles: (plan: DropPlan) => Promise<AttachmentItem[]>;
+  /** Explorer / editor URI drops: attach by real path (no byte copy). */
+  onAttachPaths: (paths: string[]) => Promise<AttachmentItem[]>;
   onPreviewImage: (path: string) => Promise<string>;
   onModel: (modelId: string) => void;
   agentMode: AgentMode;
@@ -233,6 +237,8 @@ export function ChatPane({
   const overlayRef = useRef<DragOverlay>(NO_DRAG);
   const onUploadFilesRef = useRef(onUploadFiles);
   onUploadFilesRef.current = onUploadFiles;
+  const onAttachPathsRef = useRef(onAttachPaths);
+  onAttachPathsRef.current = onAttachPaths;
   const carryRef = useRef<ComposerCarry | null>(null);
   const [editingId, setEditingId] = useState<string>();
   const [editingQueueId, setEditingQueueId] = useState<string>();
@@ -609,13 +615,13 @@ export function ChatPane({
   // The whole panel accepts files, not just the composer: dropping one used to hand it to
   // the browser, which opened it and navigated away from the conversation.
   //
-  // Everything here runs in the capture phase and stops the event there, which is what
-  // makes a drop arrive at all under VS Code. The webview host (`pre/index.html`) keeps its
-  // own `dragenter`/`dragover` listeners on this same window, and each one reports the drag
-  // back to the workbench, which answers by setting `pointer-events: none` on the frame we
-  // live in. One `dragover` was enough: the panel went deaf for the rest of the drag, so the
-  // overlay never cleared and the drop landed in the workbench instead of here. Capturing
-  // first means those listeners never run and the frame stays live.
+  // Finder (kind===file): preventDefault skips pre-script drag-start; forceShiftKey makes
+  // it post drag{shiftKey:true} so the monitor keeps the iframe live. stopPropagation only
+  // if shift cannot be forced — never when shift works (that blocks the pre-script).
+  //
+  // Explorer (string MIME): pre-script never posts. `startParkedUnparkWatch` posts the same
+  // host `drag` `{ shiftKey: true }` only while the outer iframe is parked, so enter/over/
+  // drop arrive on first pointer-over without waiting for a workbench mousemove.
   useEffect(() => {
     const apply = (next: DragOverlay) => {
       overlayRef.current = next;
@@ -626,10 +632,9 @@ export function ChatPane({
     };
     const signal = (event: DragSignal) => apply(nextDragOverlay(overlayRef.current, event));
     const claim = (event: DragEvent): boolean => {
-      if (isReclaim(event)) return false;
       if (!dragCarriesFiles(Array.from(event.dataTransfer?.types ?? []))) return false;
       event.preventDefault();
-      event.stopPropagation();
+      if (!forceShiftKey(event)) event.stopPropagation();
       return true;
     };
 
@@ -649,18 +654,24 @@ export function ChatPane({
     };
     const onDrop = (event: DragEvent) => {
       if (!claim(event)) return;
+      // Paths only from this drop event — getData is empty during dragover by design.
+      const dataTransfer = event.dataTransfer;
+      const dropTypes = Array.from(dataTransfer?.types ?? []);
+      const pathsPending = pathsFromDropAsync(dataTransfer);
+      const captured = collectDrop(dataTransfer);
       signal({ kind: "exit" });
-      // A drag out of the explorer carries real paths: attach those as-is, no byte copy.
-      const paths = pathsFromDrop(event.dataTransfer);
-      if (paths.length > 0) {
-        mergeAttachments(
-          paths.map((path) => ({ path, name: path.split(/[\\/]/).pop() || path, kind: "file" as const })),
-        );
-        return;
-      }
-      // `items` is only readable during the event, so capture the entries now.
-      const captured = collectDrop(event.dataTransfer);
       void (async () => {
+        const paths = await pathsPending;
+        if (paths.length > 0) {
+          const items = await onAttachPathsRef.current(paths);
+          if (items.length > 0) mergeAttachments(items);
+          return;
+        }
+        // Explorer MIME with no readable paths: never fall through as a silent no-op.
+        if (dragCarriesExplorerPaths(dropTypes) && captured.entries.length === 0 && captured.plainFiles.length === 0) {
+          await addDroppedFiles({ files: [], skipped: emptySkips() });
+          return;
+        }
         const skipped = emptySkips();
         skipped.tooMany += captured.skippedTooMany;
         const files: DroppedFile[] = [];
@@ -677,19 +688,16 @@ export function ChatPane({
         await addDroppedFiles({ files, skipped });
       })();
     };
-    // The ways a drag can end without a `drop` ever reaching us.
     const onDragEnd = () => signal({ kind: "exit" });
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") signal({ kind: "exit" });
     };
     const onBlur = () => signal({ kind: "exit" });
 
-    // One timer for both jobs, since they run at the same rate: take the frame back off
-    // the workbench, and retire an overlay claim nothing renewed.
+    const stopUnparkWatch = startParkedUnparkWatch();
     const beat = window.setInterval(() => {
-      if (document.visibilityState === "visible") reclaimFrame(window);
       if (overlayRef.current.visible) signal({ kind: "tick", at: Date.now() });
-    }, RECLAIM_MS);
+    }, DRAG_TICK_MS);
 
     window.addEventListener("dragenter", onEnter, true);
     window.addEventListener("dragover", onOver, true);
@@ -699,6 +707,7 @@ export function ChatPane({
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("blur", onBlur);
     return () => {
+      stopUnparkWatch();
       window.clearInterval(beat);
       window.removeEventListener("dragenter", onEnter, true);
       window.removeEventListener("dragover", onOver, true);
@@ -773,7 +782,7 @@ export function ChatPane({
           ) : null}
         <TodoList locale={locale} todos={todos ?? []} />
         {hitl}
-        <FilesChanged locale={locale} files={changedFiles ?? []} onOpen={(f) => openInEditor(f.path)} />
+        <FilesChanged locale={locale} files={changedFiles ?? []} onOpen={openChangeDiff} />
         <QueuedMessageList
           locale={locale}
           items={queue}
@@ -823,13 +832,7 @@ export function ChatPane({
               </button>
             </div>
           ) : null}
-          <CurrentFileBar
-            locale={locale}
-            file={activeFile ?? undefined}
-            enabled={shareActiveFile}
-            onToggle={onShareActiveFile}
-          />
-          {attachments.length > 0 ? (
+          {activeFile || attachments.length > 0 ? (
             <AttachmentChips
               items={attachments}
               removable
@@ -848,6 +851,10 @@ export function ChatPane({
                 if (!item.editorSelection || !item.filePath || !item.startLine || !item.endLine) return;
                 postExtension({ type: "open", path: item.filePath, startLine: item.startLine, endLine: item.endLine });
               }}
+              activeFile={activeFile ?? undefined}
+              activeFileIncluded={shareActiveFile}
+              onToggleActiveFile={onShareActiveFile}
+              locale={locale}
               className="mb-1.5 px-1"
             />
           ) : null}
@@ -1156,6 +1163,10 @@ function AttachmentChips({
   onPreview,
   onRemove,
   onOpen,
+  activeFile,
+  activeFileIncluded,
+  onToggleActiveFile,
+  locale,
   className = "",
 }: {
   items: AttachmentItem[];
@@ -1165,35 +1176,63 @@ function AttachmentChips({
   onPreview?: (item: AttachmentItem) => void;
   onRemove?: (path: string) => void;
   onOpen?: (item: AttachmentItem) => void;
+  activeFile?: ActiveFile | null;
+  activeFileIncluded?: boolean;
+  onToggleActiveFile?: (next: boolean) => void;
+  locale?: Locale;
   className?: string;
 }) {
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
+      {activeFile && locale && onToggleActiveFile ? (
+        <ActiveFileChip
+          locale={locale}
+          file={activeFile}
+          included={Boolean(activeFileIncluded)}
+          onToggle={onToggleActiveFile}
+        />
+      ) : null}
       {items.map((item) => {
         const Icon = kindIcon(item.kind);
         const previewable = item.kind === "image" && Boolean(onPreview);
+        const rangeLabel =
+          item.editorSelection && item.startLine != null && item.endLine != null
+            ? `:${item.startLine}-${item.endLine}`
+            : "";
+        // Prefer host `relativePath` (asRelativePath); absolute path only when outside the workspace.
+        const titlePath =
+          item.relativePath ||
+          (item.editorSelection ? item.filePath || item.path : item.path);
+        const fullTitle = `${titlePath}${rangeLabel}`;
+        const nameLabel = item.editorSelection
+          ? pathLeaf(item.relativePath || item.filePath || item.name)
+          : item.name || pathLeaf(item.path);
         return (
           <span
             key={item.path}
-            title={item.path}
-            className="inline-flex max-w-[200px] items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--panel-2)] py-0.5 pl-1.5 pr-1 text-[11px] text-[var(--muted)]"
+            title={fullTitle}
+            className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--panel-2)] py-0.5 pl-1.5 pr-1 text-[11px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
           >
             <RippleButton
               type="button"
-              title={item.editorSelection ? item.name : previewable ? previewLabel : item.path}
-              aria-label={previewable ? previewLabel : item.name}
+              hoverBg={false}
+              title={item.editorSelection ? fullTitle : previewable ? previewLabel : fullTitle}
+              aria-label={previewable ? previewLabel : nameLabel}
               onClick={(event) => {
                 event.stopPropagation();
                 if (item.editorSelection && onOpen) onOpen(item);
                 else if (previewable && onPreview) onPreview(item);
               }}
               disabled={!(previewable || item.editorSelection)}
-              className={`inline-flex min-w-0 flex-1 items-center gap-1 rounded-full text-left disabled:hover:bg-transparent ${
+              className={`inline-flex items-center gap-1 rounded-full text-left ${
                 previewable || item.editorSelection ? "cursor-pointer" : "cursor-default"
               }`}
             >
               <Icon size={12} className="shrink-0 opacity-80" />
-              <span className="min-w-0 flex-1 truncate">{item.name}</span>
+              <span className="inline-flex items-center">
+                <span>{nameLabel}</span>
+                {rangeLabel ? <span className="shrink-0">{rangeLabel}</span> : null}
+              </span>
             </RippleButton>
             {removable && onRemove ? (
               <RippleButton

@@ -36,8 +36,19 @@ const FILE_DRAG_TYPES = [
   "codefiles",
 ] as const;
 
-/** The path-carrying types, most complete first. */
-const PATH_DRAG_TYPES = ["application/vnd.code.uri-list", "text/uri-list"] as const;
+/**
+ * Path-carrying flavours, richest first.
+ *
+ * - `application/vnd.code.uri-list` — every dragged resource (files and folders).
+ * - `text/uri-list` — first resource only (HTML DnD convention).
+ * - `ResourceURLs` — JSON URI array; explorer omits directories from this one.
+ * - `CodeFiles` — JSON of absolute filesystem paths, including folders.
+ *
+ * Matched lowercased: the type list reports VS Code's own names that way.
+ */
+const PATH_URI_LIST_TYPES = ["application/vnd.code.uri-list", "text/uri-list"] as const;
+const PATH_JSON_URI_TYPES = ["resourceurls"] as const;
+const PATH_JSON_PATH_TYPES = ["codefiles"] as const;
 
 /**
  * Compared lowercased: `DataTransfer.types` reports `Files` with a capital F but hands back
@@ -90,44 +101,51 @@ export function nextDragOverlay(state: DragOverlay, signal: DragSignal): DragOve
 }
 
 /**
- * Taking the frame back from the workbench.
+ * Finder path (kind === "file"): let the pre-script forward.
  *
- * VS Code parks every webview while a drag is anywhere over its window: its
- * `WebviewWindowDragMonitor` answers a `dragover` on the workbench window by setting
- * `pointer-events: none` on our iframe, so a file dragged in across the editor is already
- * shut out by the time it reaches the panel - no `dragenter`, no overlay, no drop. Holding
- * Shift is the one exemption the monitor makes, and it takes the webview's word for it:
- * the frame host forwards `drag` reports with whatever `shiftKey` the event carried, and a
- * report with `shiftKey` set makes the monitor hand the frame back.
+ * Workbench `Une` parks the iframe on non-shift window `drag`. Pre-script posts
+ * `drag` `{ shiftKey }` only for all-`file` items. For Finder:
+ * 1. `preventDefault` on enter so `drag-start` is skipped.
+ * 2. Force `shiftKey` so the pre-script posts `drag` `{ shiftKey: true }`.
+ * 3. Only if shift cannot be forced, `stopPropagation` so a false report cannot
+ *    re-park us — never stopPropagation when shift forced (blocks Finder).
  *
- * So that is what this sends - a `dragover` at our own window, flagged, carrying one file
- * so the host recognises it as a file drag worth reporting. It is the only channel a
- * webview has to say "leave this frame alone", and it has to be sent on a timer because a
- * parked frame cannot see the drag that parked it. Once the frame is back and the pointer
- * is over the panel, the drag stays inside this document and nothing parks it again.
+ * Explorer path (string MIME): pre-script never posts. Unpark is handled by
+ * `webview-unpark.ts` (host `drag` `{ shiftKey: true }` only while parked).
+ * Synthetic reclaim events keep empty `dataTransfer` in Electron and cannot
+ * unpark explorer — do not rely on them as the primary reclaim.
  */
 const RECLAIM_FLAG = "__opensiderReclaim";
 
-/** How often to reclaim: comfortably inside the ~350ms the drag model re-fires `dragover`. */
-export const RECLAIM_MS = 200;
+/** Legacy beat interval; park-watch in `webview-unpark` is the explorer reclaim. */
+export const RECLAIM_MS = 100;
 
-/** Our own reclaim bouncing back through the listeners; never a real drag. */
 export function isReclaim(event: Event): boolean {
   return (event as unknown as Record<string, unknown>)[RECLAIM_FLAG] === true;
 }
 
+/** Make the pre-script report this drag as Shift-held. Returns whether shiftKey reads true. */
+export function forceShiftKey(event: DragEvent): boolean {
+  if (event.shiftKey) return true;
+  try {
+    Object.defineProperty(event, "shiftKey", { configurable: true, get: () => true });
+  } catch {
+    return false;
+  }
+  return Boolean((event as DragEvent).shiftKey);
+}
+
+/** Synthetic File dragover for tests / optional Finder assist. Explorer needs host unpark. */
 export function reclaimFrame(target: Window): void {
   let data: DataTransfer;
   try {
     data = new DataTransfer();
-    // The frame host only reports drags whose items are all files, so an empty one is
-    // ignored and the frame is never handed back.
     data.items.add(new File([], "reclaim"));
   } catch {
     return;
   }
   const event = new DragEvent("dragover", {
-    bubbles: false,
+    bubbles: true,
     cancelable: true,
     shiftKey: true,
     dataTransfer: data,
@@ -135,6 +153,23 @@ export function reclaimFrame(target: Window): void {
   Object.defineProperty(event, RECLAIM_FLAG, { value: true });
   target.dispatchEvent(event);
 }
+
+/**
+ * Explorer / editor URI drags (string MIME). Not Finder `Files` byte drags.
+ * Used so an empty path list after drop cannot fall through as a silent no-op.
+ */
+export function dragCarriesExplorerPaths(types: readonly string[]): boolean {
+  const seen = types.map((type) => type.toLowerCase());
+  return (
+    seen.includes("resourceurls") ||
+    seen.includes("codefiles") ||
+    seen.includes("application/vnd.code.uri-list") ||
+    seen.includes("text/uri-list")
+  );
+}
+
+/** Overlay idle watchdog interval. */
+export const DRAG_TICK_MS = 200;
 
 export type DroppedFile = {
   /** File name, or the path inside the dropped folder when `dir` is set. */
@@ -197,17 +232,36 @@ export async function fileToBase64(file: File): Promise<string | undefined> {
  * These files already live on disk, so they can be attached by path with no copy; a drag
  * out of Finder carries no path at all and falls through to the byte path. Pure so the
  * choice between the two can be tested without a DataTransfer: `read` is the lookup.
+ *
+ * Sources are unioned: `text/uri-list` alone only has the first item, `ResourceURLs` skips
+ * folders, and in a webview some flavours arrive empty even though their type is listed —
+ * taking every usable payload is what makes multi-select and folder drops land.
  */
 export function pathsFromTypes(types: readonly string[], read: (type: string) => string): string[] {
   const seen = new Map(types.map((type) => [type.toLowerCase(), type]));
-  for (const type of PATH_DRAG_TYPES) {
+  const out: string[] = [];
+  const add = (paths: string[]) => {
+    for (const path of paths) {
+      if (path && !out.includes(path)) out.push(path);
+    }
+  };
+
+  for (const type of PATH_URI_LIST_TYPES) {
     const actual = seen.get(type);
     if (actual === undefined) continue;
-    const paths = parseUriList(read(actual));
-    // A type that is present but holds nothing usable is not a reason to stop looking.
-    if (paths.length > 0) return paths;
+    add(parseUriList(read(actual)));
   }
-  return [];
+  for (const type of PATH_JSON_URI_TYPES) {
+    const actual = seen.get(type);
+    if (actual === undefined) continue;
+    add(parseResourceUrls(read(actual)));
+  }
+  for (const type of PATH_JSON_PATH_TYPES) {
+    const actual = seen.get(type);
+    if (actual === undefined) continue;
+    add(parseCodeFiles(read(actual)));
+  }
+  return out;
 }
 
 function parseUriList(raw: string): string[] {
@@ -216,25 +270,174 @@ function parseUriList(raw: string): string[] {
     const value = line.trim();
     // `#` opens a comment in the uri-list format, and a non-`file:` URI has no path to give.
     if (!value || value.startsWith("#") || !/^file:/i.test(value)) continue;
-    try {
-      const { pathname, hostname } = new URL(value);
-      const path = decodeURIComponent(pathname);
-      if (path) out.push(hostname ? `//${hostname}${path}` : path);
-    } catch {
-      // not a usable URL; the byte path will pick the file up instead
-    }
+    const path = fileUrlToPath(value);
+    if (path) out.push(path);
   }
   return out;
 }
 
-/** `pathsFromTypes` against a live event. Must be called while the event is being handled. */
+/** `ResourceURLs` is a JSON array of URI strings (files only — folders are filtered upstream). */
+export function parseResourceUrls(raw: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: string[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== "string" || !entry) continue;
+      const path = /^file:/i.test(entry) ? fileUrlToPath(entry) : "";
+      if (path) out.push(path);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** `CodeFiles` is a JSON array of absolute filesystem paths, including directories. */
+export function parseCodeFiles(raw: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function fileUrlToPath(value: string): string {
+  try {
+    const { pathname, hostname } = new URL(value);
+    const path = decodeURIComponent(pathname);
+    if (!path) return "";
+    // `file:///Users/...` has an empty host; `file://localhost/...` is the same machine.
+    // Anything else is a UNC share and keeps the host in the path.
+    if (!hostname || hostname.toLowerCase() === "localhost") {
+      // Windows file URLs arrive as `/C:/...`; strip the leading slash so `stat` works.
+      return /^\/[A-Za-z]:/.test(path) ? path.slice(1) : path;
+    }
+    return `//${hostname}${path}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * `pathsFromTypes` against a live event. Must be called while the event is being handled,
+ * and only on `drop` — `getData` is empty during dragover by design.
+ *
+ * Also reads Electron's non-standard `File.path` when the MIME payloads are empty: some
+ * explorer drops list `resourceurls`/`codefiles` in `types` but hand `getData` nothing,
+ * while still exposing the real path on the stub `File` objects.
+ */
+/** Prefer `types`, then always probe VS Code's canonical names (types can omit payloads). */
+const DROP_PATH_PROBE_TYPES = [
+  "application/vnd.code.uri-list",
+  "text/uri-list",
+  "ResourceURLs",
+  "resourceurls",
+  "CodeFiles",
+  "codefiles",
+  "text/plain",
+  "text",
+] as const;
+
 export function pathsFromDrop(dataTransfer: DataTransfer | null): string[] {
   if (!dataTransfer) return [];
-  return pathsFromTypes(Array.from(dataTransfer.types ?? []), (type) => {
+  const listed = Array.from(dataTransfer.types ?? []);
+  const probe = [...listed];
+  for (const type of DROP_PATH_PROBE_TYPES) {
+    if (!probe.some((t) => t.toLowerCase() === type.toLowerCase())) probe.push(type);
+  }
+  const fromTypes = pathsFromTypes(probe, (type) => {
     try {
       return dataTransfer.getData(type) ?? "";
     } catch {
       return "";
+    }
+  });
+  if (fromTypes.length > 0) return fromTypes;
+
+  // Last-chance sync reads: some hosts only fill these on drop.
+  for (const fallback of ["text/uri-list", "text/plain", "text"]) {
+    try {
+      const raw = dataTransfer.getData(fallback);
+      if (!raw) continue;
+      const paths = fallback === "text/uri-list" ? parseUriList(raw) : parsePlainPathList(raw);
+      if (paths.length > 0) return paths;
+    } catch {
+      // continue
+    }
+  }
+
+  const fromFiles: string[] = [];
+  for (const file of Array.from(dataTransfer.files ?? [])) {
+    const path = (file as File & { path?: string }).path;
+    if (typeof path === "string" && path && !fromFiles.includes(path)) fromFiles.push(path);
+  }
+  return fromFiles;
+}
+
+/** Newline / URI-list shaped plain text that is actually file paths or file URLs. */
+function parsePlainPathList(raw: string): string[] {
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const value = line.trim();
+    if (!value || value.startsWith("#")) continue;
+    if (/^file:/i.test(value)) {
+      const path = fileUrlToPath(value);
+      if (path) out.push(path);
+      continue;
+    }
+    // Absolute POSIX / Windows paths only — never treat free text as a path.
+    if (value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value)) out.push(value);
+  }
+  return out;
+}
+
+/**
+ * Drop-time path read that also waits on `DataTransferItem.getAsString` for explorer
+ * MIME payloads when synchronous `getData` is empty (common in VS Code webviews).
+ * `getAsString` must be kicked off during the drop handler; the Promise may settle after.
+ */
+export function pathsFromDropAsync(dataTransfer: DataTransfer | null): Promise<string[]> {
+  const sync = pathsFromDrop(dataTransfer);
+  if (sync.length > 0 || !dataTransfer) return Promise.resolve(sync);
+
+  const items = Array.from(dataTransfer.items ?? []).filter((item) => item.kind === "string");
+  if (items.length === 0) return Promise.resolve(sync);
+
+  return new Promise((resolve) => {
+    const byType = new Map<string, string>();
+    let pending = items.length;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      const types = Array.from(byType.keys());
+      const paths = pathsFromTypes(types, (type) => byType.get(type.toLowerCase()) ?? "");
+      resolve(paths.length > 0 ? paths : sync);
+    };
+    // Bound wait: if getAsString never calls back, still settle so the drop is not silent.
+    const timer = setTimeout(finish, 250);
+    for (const item of items) {
+      try {
+        item.getAsString((value) => {
+          byType.set(item.type.toLowerCase(), value ?? "");
+          pending -= 1;
+          if (pending <= 0) {
+            clearTimeout(timer);
+            finish();
+          }
+        });
+      } catch {
+        pending -= 1;
+        if (pending <= 0) {
+          clearTimeout(timer);
+          finish();
+        }
+      }
     }
   });
 }
