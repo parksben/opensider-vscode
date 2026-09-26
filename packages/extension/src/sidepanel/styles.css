@@ -480,6 +480,14 @@ mark.cs-at-match {
   overflow-y: auto;
 }
 
+/* Beat VS Code webview @layer vscode-default `code` chrome (preformat bg + radius). */
+.cs-terminal-command {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  color: var(--text);
+}
+
 .cs-fold-scroll {
   max-height: 10lh;
   overflow-y: auto;

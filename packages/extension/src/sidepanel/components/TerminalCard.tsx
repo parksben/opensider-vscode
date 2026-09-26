@@ -56,24 +56,21 @@ export function TerminalCard({ locale, part }: { locale: Locale; part: ToolPart 
   };
 
   return (
-    <section className="my-1 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-2)]">
-      <div className="flex items-center gap-1.5 px-2 py-1.5">
-        <span className="inline-flex shrink-0 text-[var(--muted)]">
+    <section className="my-1 overflow-hidden border border-[var(--line)]">
+      <div className="flex items-start gap-1.5 px-2 py-1.5">
+        <span className="inline-flex h-6 w-3 shrink-0 items-center justify-center text-[var(--muted)]">
           {running ? (
             <LoaderCircle size={12} className="animate-spin" />
           ) : (
             <SquareTerminal size={12} strokeWidth={1.75} />
           )}
         </span>
-        <code
-          title={command}
-          className="min-w-0 flex-1 truncate font-[var(--vscode-editor-font-family)] text-[11.5px] text-[var(--text)]"
-        >
+        <code className="cs-terminal-command max-h-[5lh] min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words font-[var(--vscode-editor-font-family)] text-[11.5px] leading-6 text-[var(--text)]">
           {command}
         </code>
         {!running && exitCode != null ? (
           <span
-            className={`shrink-0 text-[10.5px] ${exitCode === 0 ? "text-[var(--muted)]" : "text-[var(--bad)]"}`}
+            className={`inline-flex h-6 shrink-0 items-center text-[10.5px] ${exitCode === 0 ? "text-[var(--muted)]" : "text-[var(--bad)]"}`}
           >
             {t(locale, "commandExit").replace("{code}", String(exitCode))}
           </span>
