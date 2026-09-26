@@ -46,16 +46,22 @@ export const CurrentFileBar = memo(function CurrentFileBar({
         enabled ? "" : "opacity-60"
       }`}
     >
-      <FileCode2 size={12} className="shrink-0 opacity-80" aria-hidden="true" />
+      {/*
+        Hover lives on this flex-1 row (icon + path), not on the path text alone, so the
+        wash covers the gap up to the eye and reads as one control. The eye keeps its own.
+      */}
       <RippleButton
         type="button"
         title={`${t(locale, enabled ? "activeFileShared" : "activeFileHidden")} — ${t(locale, "activeFileOpen")}`}
         onClick={() => openInEditor(file.path, file.selection?.startLine, file.selection?.endLine)}
-        className="min-w-0 flex-1 truncate rounded text-left hover:text-[var(--text)]"
+        className="flex min-w-0 flex-1 items-center gap-1 rounded text-left hover:text-[var(--text)]"
       >
-        <span className="truncate">{file.relativePath}</span>
-        {range ? <span className="ml-1 opacity-70">{range}</span> : null}
-        {file.dirty ? <span className="ml-1 opacity-70">· {t(locale, "activeFileUnsaved")}</span> : null}
+        <FileCode2 size={12} className="shrink-0 opacity-80" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate text-left">
+          {file.relativePath}
+          {range ? <span className="ml-1 opacity-70">{range}</span> : null}
+          {file.dirty ? <span className="ml-1 opacity-70">· {t(locale, "activeFileUnsaved")}</span> : null}
+        </span>
       </RippleButton>
       <IconButton
         side="top"
