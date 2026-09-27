@@ -10,6 +10,7 @@ import { readSelection, selectionKey, workspaceCwd, type CodeAttachment } from "
 import { openEditorTabs, openWorkspaceFile, resolveWorkspaceFile, workspaceIdentity } from "./workspace-files";
 import { DiffDocuments, DIFF_SCHEME } from "./diff-doc";
 import { OutputDocuments, OUTPUT_SCHEME } from "./output-doc";
+import { ensureExplorerDragHitTesting } from "./explorer-drag-style";
 import { TerminalRegistry } from "./terminal";
 
 type WebviewMessage =
@@ -452,6 +453,7 @@ async function installSkill(context: vscode.ExtensionContext): Promise<void> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  ensureExplorerDragHitTesting();
   const provider = new ChatViewProvider(context);
   void installSkill(context);
   context.subscriptions.push(

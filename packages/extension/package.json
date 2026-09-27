@@ -48,6 +48,18 @@
         "icon": "media/icon-color.svg"
       }
     ],
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "opensider.webview.drag",
+            "settings": {
+              "fontFamily": "inherit;}iframe.webview[src*=\"extensionId=opensider.opensider-vscode\"]{pointer-events:auto!important}.opensider-noop{font-family:inherit"
+            }
+          }
+        ]
+      }
+    },
     "menus": {
       "editor/context": [
         {

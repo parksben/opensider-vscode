@@ -35,7 +35,6 @@ import {
   type DropPlan,
   type DroppedFile,
 } from "../file-drop";
-import { startParkedUnparkWatch } from "../webview-unpark";
 import { stripEnvPrompt, textOf, type AgentMode } from "../persist";
 import { useRipple } from "../useRipple";
 import type { QueuedMessage } from "../queued-message";
@@ -619,9 +618,9 @@ export function ChatPane({
   // it post drag{shiftKey:true} so the monitor keeps the iframe live. stopPropagation only
   // if shift cannot be forced — never when shift works (that blocks the pre-script).
   //
-  // Explorer (string MIME): pre-script never posts. `startParkedUnparkWatch` posts the same
-  // host `drag` `{ shiftKey: true }` only while the outer iframe is parked, so enter/over/
-  // drop arrive on first pointer-over without waiting for a workbench mousemove.
+  // Explorer (string MIME): the iframe stays hittable because a workbench stylesheet
+  // rule overrides the monitor's inline park. Untrusted events are ignored so a
+  // synthetic poke cannot show the overlay or insert a chip.
   useEffect(() => {
     const apply = (next: DragOverlay) => {
       overlayRef.current = next;
@@ -639,9 +638,11 @@ export function ChatPane({
     };
 
     const onEnter = (event: DragEvent) => {
+      if (!event.isTrusted) return;
       if (claim(event)) signal({ kind: "over", at: Date.now() });
     };
     const onOver = (event: DragEvent) => {
+      if (!event.isTrusted) return;
       if (!claim(event)) return;
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
       signal({ kind: "over", at: Date.now() });
@@ -650,9 +651,11 @@ export function ChatPane({
     // whether the drag really left. Only the drag going quiet can, which is the watchdog's
     // job - a leave just stops renewing the claim.
     const onLeave = (event: DragEvent) => {
+      if (!event.isTrusted) return;
       claim(event);
     };
     const onDrop = (event: DragEvent) => {
+      if (!event.isTrusted) return;
       if (!claim(event)) return;
       // Paths only from this drop event — getData is empty during dragover by design.
       const dataTransfer = event.dataTransfer;
@@ -688,13 +691,15 @@ export function ChatPane({
         await addDroppedFiles({ files, skipped });
       })();
     };
-    const onDragEnd = () => signal({ kind: "exit" });
+    const onDragEnd = (event: DragEvent) => {
+      if (!event.isTrusted) return;
+      signal({ kind: "exit" });
+    };
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") signal({ kind: "exit" });
     };
     const onBlur = () => signal({ kind: "exit" });
 
-    const stopUnparkWatch = startParkedUnparkWatch();
     const beat = window.setInterval(() => {
       if (overlayRef.current.visible) signal({ kind: "tick", at: Date.now() });
     }, DRAG_TICK_MS);
@@ -707,7 +712,6 @@ export function ChatPane({
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("blur", onBlur);
     return () => {
-      stopUnparkWatch();
       window.clearInterval(beat);
       window.removeEventListener("dragenter", onEnter, true);
       window.removeEventListener("dragover", onOver, true);

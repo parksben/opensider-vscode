@@ -110,14 +110,15 @@ export function nextDragOverlay(state: DragOverlay, signal: DragSignal): DragOve
  * 3. Only if shift cannot be forced, `stopPropagation` so a false report cannot
  *    re-park us — never stopPropagation when shift forced (blocks Finder).
  *
- * Explorer path (string MIME): pre-script never posts. Unpark is handled by
- * `webview-unpark.ts` (host `drag` `{ shiftKey: true }` only while parked).
- * Synthetic reclaim events keep empty `dataTransfer` in Electron and cannot
- * unpark explorer — do not rely on them as the primary reclaim.
+ * Explorer path (string MIME): the pre-script never posts. The monitor parks
+ * the iframe on the source `drag` before hit-testing. A token-stylesheet rule
+ * (`explorer-drag-style.ts`) keeps this iframe's computed `pointer-events` at
+ * `auto`, so that inline park does not win. Do not stopPropagation on Finder
+ * when shift was forced.
  */
 const RECLAIM_FLAG = "__opensiderReclaim";
 
-/** Legacy beat interval; park-watch in `webview-unpark` is the explorer reclaim. */
+/** Legacy beat interval. Explorer hit-testing is the token stylesheet rule. */
 export const RECLAIM_MS = 100;
 
 export function isReclaim(event: Event): boolean {
@@ -135,7 +136,7 @@ export function forceShiftKey(event: DragEvent): boolean {
   return Boolean((event as DragEvent).shiftKey);
 }
 
-/** Synthetic File dragover for tests / optional Finder assist. Explorer needs host unpark. */
+/** Synthetic File dragover. Not used for explorer: the parent parks on its own `drag` before this can matter. */
 export function reclaimFrame(target: Window): void {
   let data: DataTransfer;
   try {
