@@ -5,10 +5,35 @@
   "version": "0.1.0",
   "publisher": "opensider",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#14160f",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/parksben/opensider-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/parksben/opensider-vscode/issues"
+  },
+  "homepage": "https://github.com/parksben/opensider-vscode#readme",
+  "keywords": [
+    "agent",
+    "acp",
+    "claude",
+    "codex",
+    "cursor",
+    "opencode",
+    "copilot",
+    "chat"
+  ],
+  "qna": "marketplace",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "AI",
     "Chat",
     "Other"
   ],

@@ -6,7 +6,7 @@ OpenSider for VS Code drives an Agent CLI that is already installed and signed i
 
 It is the VS Code edition of the [OpenSider](https://github.com/parksben/opensider) browser extension: the same side panel, the same ACP engine, with the working directory set to the folder you have open. You can use it in place of GitHub Copilot Chat. The difference is that the model and the account come from your own Agent CLI.
 
-The panel follows the VS Code display language. The screenshots below are the English UI.
+The panel follows the VS Code display language. The screenshots below are the English UI. Chinese documentation, with Chinese screenshots, is on GitHub: [README.zh-CN.md](https://github.com/parksben/opensider-vscode/blob/main/README.zh-CN.md).
 
 ## The panel
 
@@ -14,19 +14,19 @@ The panel follows the VS Code display language. The screenshots below are the En
 
 After install, if a scan finds no ACP CLI, the panel does not open a chat. It stays on a setup card. The header reads “offline” and “New Chat”. The card holds a prompt you can copy and hand to any local AI agent you already have. That agent follows the skill bundled with this extension and installs a CLI. When it is done, click **Rescan**.
 
-![No agent CLI found](packages/extension/media/readme/en/no-agent.png)
+![No agent CLI found](media/readme/en/no-agent.png)
 
 ### After a CLI is found
 
 Click a name to connect. The list is whatever this machine actually has, not a fixed catalog.
 
-![Click an Agent to connect](packages/extension/media/readme/en/pick-agent.png)
+![Click an Agent to connect](media/readme/en/pick-agent.png)
 
 ### Chat runs in the current workspace
 
 Select code in the editor and a chip with the file name and line range appears above the composer. Commands show up as terminal cards and can jump into a VS Code terminal. Files written in the turn are collected as “N files changed”; click a name to open the before/after diff. The ring next to the model name is context usage reported by the agent. If the agent does not report it, the ring is absent.
 
-![Workspace chat, terminal, changed files, and a selection chip](packages/extension/media/readme/en/workspace-chat.png)
+![Workspace chat, terminal, changed files, and a selection chip](media/readme/en/workspace-chat.png)
 
 ## What it does
 
