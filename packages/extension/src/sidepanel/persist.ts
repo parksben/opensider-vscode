@@ -217,11 +217,20 @@ export function serializeSession(session: Session): PersistedState["sessions"][n
 }
 
 const FORK_WRAP_PREFIX = /^\[Forked thread context[^\]]*\]\s*(?:\n\n)?/;
-/** The host's ambient block. It is environment, never something the user typed. */
-const CURRENT_FILE_PREFIX = /^\[Current file\] [^\n]*(?:\n\n)?/;
+/**
+ * Ambient lines the host prepends. They are environment, never something the user
+ * typed, and either may lead (window, then file) or sit under a fork wrapper.
+ */
+const ENV_LINE_PREFIX = /^\[(?:Current window|Current file)\] [^\n]*(?:\n\n)?/;
 
 export function stripEnvPrompt(text: string): string {
-  return text.replace(CURRENT_FILE_PREFIX, "").replace(FORK_WRAP_PREFIX, "").trimStart();
+  let next = text;
+  for (;;) {
+    const stripped = next.replace(FORK_WRAP_PREFIX, "").replace(ENV_LINE_PREFIX, "");
+    if (stripped === next) break;
+    next = stripped;
+  }
+  return next.trimStart();
 }
 
 function looksCollapsed(text: string): boolean {
@@ -591,7 +600,7 @@ export function wrapAttachments(text: string, items: AttachmentItem[]): string {
 
 /**
  * `/a /b` 前缀：斜杠语法只有落在**整个提示词**的最前面才会被 CLI 当 skill 调用，而 Host
- * 还会在正文前面拼当前标签页信息，所以这一段要单独交给 Host 去拼（见 internal/host 的 prompt
+ * 还会在正文前面拼当前窗口和当前文件，所以这一段要单独交给 Host 去拼（见 internal/host 的 prompt
  * 分发）。正文里保留同样的 `/name`，人看着也一致。
  *
  * 前缀只从**芯片**推导，不去认用户手打的文本：`/usr/local/bin is broken` 这种正文不能被当成

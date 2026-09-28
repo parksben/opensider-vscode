@@ -12,6 +12,7 @@ import { DiffDocuments, DIFF_SCHEME } from "./diff-doc";
 import { OutputDocuments, OUTPUT_SCHEME } from "./output-doc";
 import { ensureExplorerDragHitTesting } from "./explorer-drag-style";
 import { TerminalRegistry } from "./terminal";
+import { readEditorWindow } from "./window-info";
 
 type WebviewMessage =
   | { type: "ready" }
@@ -135,12 +136,14 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   private ensureHost(): void {
     if (this.started) {
       this.pushWorkspace();
+      this.pushWindow();
       this.pushSelection();
       return;
     }
     this.started = true;
     this.host.start(hostBinary(this.context.extensionPath));
     this.pushWorkspace();
+    this.pushWindow();
     this.host.send({ type: "hello" });
     this.host.send({ type: "agents.detect" });
   }
@@ -152,6 +155,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       this.queue = [];
       for (const item of queued) void this.view?.webview.postMessage(item);
       this.pushWorkspace();
+      this.pushWindow();
       this.pushSelection();
       this.pushTabs();
       this.pushActiveFile();
@@ -164,6 +168,11 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     if (message.type === "host") {
       if (this.handleTerminal(message.message)) return;
       if (this.handleLocal(message.message)) return;
+      // The panel cannot see the window id. Stamp it here, at send time, so the
+      // prompt names the window that is actually hosting this chat.
+      if (message.message.type === "prompt") {
+        message.message = { ...message.message, currentWindow: readEditorWindow(this.context.logUri) };
+      }
       this.host.send(message.message);
       return;
     }
@@ -359,6 +368,10 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private pushWindow(): void {
+    this.host.send({ type: "window.set", window: readEditorWindow(this.context.logUri) });
+  }
+
   private pushWorkspace(): void {
     const cwd = workspaceCwd();
     const identity = workspaceIdentity();
@@ -404,6 +417,10 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
   noteWorkspace(): void {
     if (!this.view) return;
     this.pushWorkspace();
+  }
+
+  noteWindow(): void {
+    this.pushWindow();
   }
 
   noteTabs(): void {
@@ -483,6 +500,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidSaveTextDocument(() => provider.noteActiveFile()),
     vscode.workspace.onDidChangeTextDocument(() => provider.noteActiveFile()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => provider.noteWorkspace()),
+    vscode.window.onDidChangeWindowState(() => provider.noteWindow()),
     { dispose: () => provider.dispose() },
   );
 }

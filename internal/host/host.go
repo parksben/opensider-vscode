@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,19 @@ type Host struct {
 	// 连的是哪个 Agent 无关，所以不随会话变化清空，只按 skillCacheTTL 过期重扫。
 	skills   []skills.Skill
 	skillsAt time.Time
+	// editorWindow 是侧栏所在的 VS Code 窗口。连接 Agent 时写进子进程环境，
+	// 每条 prompt 再带一份，避免 Playwright 之类的调用开到别的窗口。
+	editorWindow editorWindow
+}
+
+// editorWindow is the VS Code window this sidebar lives in. Zero value means the
+// extension has not reported one yet.
+type editorWindow struct {
+	ID        int
+	SessionID string
+	AppName   string
+	URIScheme string
+	Focused   bool
 }
 
 func Run() {
@@ -608,6 +622,7 @@ func (h *Host) attachClient(runtime *acpRuntime) error {
 	policy := h.currentPolicy
 	pinned := h.pinnedMode
 	pinnedOptions := h.pinnedOptions
+	win := h.editorWindow
 	h.mu.Unlock()
 	if agent == nil {
 		return errors.New("no agent selected")
@@ -616,7 +631,7 @@ func (h *Host) attachClient(runtime *acpRuntime) error {
 		Command: agent.Command,
 		Args:    agent.Args,
 		Cwd:     paths.WorkspaceDir(),
-		Env:     agent.Profile.Env,
+		Env:     mergeWindowEnv(agent.Profile.Env, win),
 		Auth:    agent.Profile.Auth,
 		Profile: agent.Profile,
 	}, acp.Handlers{
@@ -877,6 +892,9 @@ func (h *Host) dispatch(typ string, msg map[string]any) error {
 		return nil
 	case "workspace.set":
 		return h.setWorkspace(str(msg["cwd"]), str(msg["key"]), str(msg["name"]))
+	case "window.set":
+		h.rememberEditorWindow(msg["window"])
+		return nil
 	case "hello":
 		h.sendHello()
 		h.mu.Lock()
@@ -1156,20 +1174,22 @@ func (h *Host) handlePrompt(msg map[string]any) error {
 		// 会话正在跑、而这次也没有要求打断：保持原有的“忽略”语义，不改老行为。
 		return nil
 	}
-	// Ambient context first, then the ranges the user pinned on purpose, then what they
-	// typed — narrowing from "where I am" to "what I mean".
+	// Ambient context first (which window, then which file), then the ranges the user
+	// pinned on purpose, then what they typed — narrowing from "where I am" to "what I mean".
+	h.rememberEditorWindow(msg["currentWindow"])
+	windowBlock := h.ambientWindow()
 	currentFile := formatCurrentFile(msg["currentFile"], msg["attachments"])
 	prefix := formatCodeAttachments(msg["attachments"])
 	h.mu.Lock()
 	runtime.turnDone = make(chan struct{})
 	h.mu.Unlock()
-	// skill 的 `/name` 前缀必须排在**所有东西**前面（包括上面的当前文件块）：斜杠调用只有
+	// skill 的 `/name` 前缀必须排在**所有东西**前面（包括上面的窗口 / 当前文件块）：斜杠调用只有
 	// 落在最前才会被 CLI 当 skill 用。
 	skillPrefix := strings.TrimSpace(str(msg["skillPrefix"]))
 	if skillPrefix != "" {
 		skillPrefix += "\n\n"
 	}
-	stop, err := runtime.client.Prompt(skillPrefix + currentFile + prefix + str(msg["text"]))
+	stop, err := runtime.client.Prompt(skillPrefix + windowBlock + currentFile + prefix + str(msg["text"]))
 	interrupted, done := h.endPrompt(runtime)
 	if done != nil {
 		close(done)
@@ -1218,6 +1238,141 @@ func (h *Host) setWorkspace(dir, key, name string) error {
 	log.Log("workspace " + clean)
 	h.sendHello()
 	return nil
+}
+
+func (h *Host) rememberEditorWindow(raw any) {
+	next, ok := editorWindowFrom(raw)
+	if !ok {
+		return
+	}
+	h.mu.Lock()
+	changed := next != h.editorWindow
+	h.editorWindow = next
+	h.mu.Unlock()
+	if changed {
+		log.Log(fmt.Sprintf("window id=%d scheme=%s focused=%t", next.ID, next.URIScheme, next.Focused))
+	}
+}
+
+func (h *Host) ambientWindow() string {
+	h.mu.Lock()
+	w := h.editorWindow
+	h.mu.Unlock()
+	return formatEditorWindow(w)
+}
+
+func editorWindowFrom(raw any) (editorWindow, bool) {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return editorWindow{}, false
+	}
+	w := editorWindow{
+		ID:        intFrom(m["id"]),
+		SessionID: str(m["sessionId"]),
+		AppName:   str(m["appName"]),
+		URIScheme: str(m["uriScheme"]),
+	}
+	if focused, ok := m["focused"].(bool); ok {
+		w.Focused = focused
+	}
+	if w.ID < 0 {
+		w.ID = 0
+	}
+	if w.ID == 0 && w.SessionID == "" && w.AppName == "" && w.URIScheme == "" {
+		return editorWindow{}, false
+	}
+	return w, true
+}
+
+// windowProcessEnv is what a spawned agent can read without parsing the prompt.
+// Playwright and other editor features key off the numeric window id.
+func windowProcessEnv(w editorWindow) map[string]string {
+	env := map[string]string{}
+	if w.ID > 0 {
+		env["OPENSIDER_VSCODE_WINDOW_ID"] = strconv.Itoa(w.ID)
+	}
+	if w.SessionID != "" {
+		env["OPENSIDER_VSCODE_SESSION_ID"] = w.SessionID
+	}
+	if w.AppName != "" {
+		env["OPENSIDER_VSCODE_APP_NAME"] = w.AppName
+	}
+	if w.URIScheme != "" {
+		env["OPENSIDER_VSCODE_URI_SCHEME"] = w.URIScheme
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
+func mergeWindowEnv(base map[string]string, w editorWindow) map[string]string {
+	extra := windowProcessEnv(w)
+	if len(extra) == 0 {
+		return base
+	}
+	env := make(map[string]string, len(base)+len(extra))
+	for k, v := range base {
+		env[k] = v
+	}
+	for k, v := range extra {
+		env[k] = v
+	}
+	return env
+}
+
+// formatEditorWindow renders the ambient "this chat is in this VS Code window" line.
+// One line, no workspace contents. The id is the same number Playwright uses to pick
+// a window, so a turn that opens a browser tab can name it instead of following focus.
+func formatEditorWindow(w editorWindow) string {
+	if w.ID <= 0 && w.SessionID == "" && w.AppName == "" && w.URIScheme == "" {
+		return ""
+	}
+	var head strings.Builder
+	switch {
+	case w.AppName != "" && w.URIScheme != "":
+		fmt.Fprintf(&head, "%s (%s)", w.AppName, w.URIScheme)
+	case w.AppName != "":
+		head.WriteString(w.AppName)
+	default:
+		head.WriteString(w.URIScheme)
+	}
+	if w.ID > 0 {
+		if head.Len() > 0 {
+			head.WriteString(", ")
+		}
+		fmt.Fprintf(&head, "id %d", w.ID)
+	}
+	if w.SessionID != "" {
+		if head.Len() > 0 {
+			head.WriteString(", ")
+		}
+		fmt.Fprintf(&head, "session %s", w.SessionID)
+	}
+	focus := "unfocused"
+	if w.Focused {
+		focus = "focused"
+	}
+	if head.Len() > 0 {
+		head.WriteString(", ")
+	}
+	head.WriteString(focus)
+
+	target := "this window"
+	envHint := ""
+	if w.ID > 0 {
+		target = fmt.Sprintf("window id %d", w.ID)
+		envHint = " OPENSIDER_VSCODE_WINDOW_ID is set on the agent process."
+	}
+	return fmt.Sprintf("[Current window] %s — this chat is bound to %s. Open Playwright, browser tabs, and other editor features in this window, not another one.%s\n\n", head.String(), target, envHint)
+}
+
+func formatCurrentWindow(raw any) string {
+	w, ok := editorWindowFrom(raw)
+	if !ok {
+		return ""
+	}
+	return formatEditorWindow(w)
 }
 
 // formatCurrentFile renders the ambient "the user is looking at this" block that the

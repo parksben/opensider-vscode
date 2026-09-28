@@ -55,6 +55,28 @@ export type ActiveFile = {
   lineCount: number;
 };
 
+/**
+ * The VS Code window this chat is happening in.
+ *
+ * Several windows can be open at once, and editor features (Playwright, the integrated
+ * browser, opening a tab) follow whichever window they are pointed at. `id` is the
+ * numeric `vscodeWindowId` those features use. It is omitted when the window's log
+ * path does not carry one (some web hosts). `sessionId` changes when this window
+ * reloads, so it identifies this load of the window rather than the process.
+ */
+export type EditorWindow = {
+  /** Numeric VS Code window id. Absent when it cannot be read. */
+  id?: number;
+  /** `vscode.env.sessionId` for this window. */
+  sessionId: string;
+  /** `vscode.env.appName`, e.g. "Cursor" or "Visual Studio Code". */
+  appName: string;
+  /** `vscode.env.uriScheme`, e.g. "cursor" or "vscode". */
+  uriScheme: string;
+  /** Whether this window currently has focus. */
+  focused: boolean;
+};
+
 /** 一条正在跑（或跑完）的命令，卡片和终端共用这一份状态。 */
 export type TerminalState = {
   terminalId: string;
@@ -235,6 +257,11 @@ export type ExtToHost =
    * filed under, so history does not move when the user switches roots.
    */
   | { type: "workspace.set"; cwd: string; key?: string; name?: string }
+  /**
+   * Which VS Code window this sidebar belongs to. Sent at startup and again when the
+   * window gains or loses focus, so a newly spawned agent process inherits the id.
+   */
+  | { type: "window.set"; window: EditorWindow }
   | { type: "agents.detect" }
   | { type: "skills.refresh" }
   | {
@@ -268,6 +295,11 @@ export type ExtToHost =
        * that exact range.
        */
       currentFile?: ActiveFile;
+      /**
+       * The VS Code window this chat is in, read at send time. The host turns it into a
+       * `[Current window]` block so editor features are aimed at this window.
+       */
+      currentWindow?: EditorWindow;
       /** 「立即发送」：该会话正在跑就先取消它，等它收尾再开始这一轮。 */
       interrupt?: boolean;
     }
