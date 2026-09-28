@@ -43,3 +43,12 @@ ACP `terminal/*` is forwarded from the Go host to the extension, because only th
 ## Language
 
 The panel defaults to VS Code's display language: `panelHtml` bakes `vscode.env.language` into the webview as `window.__opensiderLanguage`, and the panel detects its locale from it on first run. The locale is cached only when the user picks one in the panel's settings, so until then the default keeps following VS Code's display language. The cache key is `opensider/locale`.
+
+## Skill and prompts
+
+`packages/extension/skills/opensider-vscode/` ships `SKILL.md`, which routes install / update / remove to `install.md` / `update.md` / `uninstall.md` and otherwise walks through agent setup. `installSkill` copies every `*.md` in that folder to `~/.opensider-vscode/skills/opensider-vscode/`.
+
+The README install/update/uninstall prompts and the settings-tab dialogs (`src/sidepanel/update-prompt.ts`) all point at the raw GitHub URL of `SKILL.md`. Keep it at `.../main/packages/extension/skills/opensider-vscode/SKILL.md` — a `main/skills/...` path is a 404.
+
+The settings tab also mirrors the browser extension's version panel: extension / host / latest rows, a manual "check for updates" that drives a `release.check` (no `announce`) with a watchdog for the offline case, and "Uninstall" opening `UninstallDialog`.
+

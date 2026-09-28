@@ -39,47 +39,42 @@ Type `/` to list the skills installed on this machine and put one at the caret. 
 
 ![Queued messages with move-up and move-down buttons on hover](media/readme/en/queue.png)
 
-## Install
+## Install & Use
 
-Download the `.vsix` for your platform from the [GitHub releases](https://github.com/parksben/opensider-vscode/releases). There is no Marketplace listing.
+> This extension is for VS Code and Cursor. Before installing, make sure you already have a running Agent CLI program on your machine.
 
-```sh
-code --install-extension opensider-vscode-darwin-arm64.vsix --force
+### 1. Install
+
+One-step install: paste the prompt below into the local AI Agent you already use (Claude Code, Codex, Cursor, OpenCode, …). It downloads the `.vsix` for this machine, installs it, and sets up an agent CLI.
+
+```
+Install the OpenSider for VSCode extension for me.
+Read https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/extension/skills/opensider-vscode/SKILL.md and follow its install flow.
 ```
 
-Use the asset that matches this machine (`darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `win32-x64`, `win32-arm64`). Cursor takes the same file:
+### 2. Update
 
-```sh
-cursor --install-extension opensider-vscode-darwin-arm64.vsix --force
+One-step update: when the panel tells you a new version is available, copy the prompt below to your local Agent and let it guide you through the update.
+
+```
+Update the OpenSider for VSCode extension for me.
+Read https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/extension/skills/opensider-vscode/SKILL.md and follow its update flow.
+```
+
+### 3. Uninstall
+
+One-step uninstall: one prompt is all it takes, and you choose whether to keep or remove your local data.
+
+```
+Uninstall the OpenSider for VSCode extension for me.
+Read https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/extension/skills/opensider-vscode/SKILL.md and follow its removal flow.
 ```
 
 Then run **Developer: Reload Window**. An OpenSider icon appears in the activity bar. The first time you open it, the panel moves to the secondary side bar, next to Copilot Chat. After that it stays wherever you drag it.
 
-When a newer release exists, the panel shows an update button and, on each load, the update dialog. That dialog is a prompt for your own agent; it does not download the package by itself.
-
-From source:
-
-```sh
-git clone https://github.com/parksben/opensider-vscode.git
-cd opensider-vscode
-go build -o packages/extension/bin/opensider-vscode-host ./cmd/opensider-vscode-host
-cd packages/extension && npm install && npm run build
-npx vsce package --out opensider-vscode.vsix
-code --install-extension opensider-vscode.vsix --force
-```
-
-## Prepare an agent
-
-The extension includes no model. You need an ACP Agent CLI on this machine, already signed in. When none is found, the panel shows the card in the screenshot below. The skill it points at lives at `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`.
+The extension includes no model: it drives an ACP Agent CLI on this machine. When none is found, the panel shows a card with the same kind of prompt, and the skill it points at lives at `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`.
 
 ![No agent CLI found](media/readme/en/no-agent.png)
-
-Claude Code and Codex do not speak ACP themselves. They need the official adapters. The extension installs those into `~/.opensider-vscode/runtime` on the first connection. You can also install them by hand:
-
-```sh
-npm install --omit=dev --prefix ~/.opensider-vscode/runtime/claude-acp @agentclientprotocol/claude-agent-acp
-npm install --omit=dev --prefix ~/.opensider-vscode/runtime/codex-acp  @agentclientprotocol/codex-acp
-```
 
 ## Local data
 

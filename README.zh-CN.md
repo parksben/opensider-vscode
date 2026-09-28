@@ -39,47 +39,42 @@ OpenSider 把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、Ope
 
 ![悬浮队列消息显示上移、下移按钮](packages/extension/media/readme/zh/queue.png)
 
-## 安装
+## 安装使用
 
-从 [GitHub Releases](https://github.com/parksben/opensider-vscode/releases) 下载和本机平台对应的 `.vsix`。不上架扩展市场。
+> 本扩展用于 VS Code 与 Cursor。安装前请确保本机已有正在运行的 Agent CLI 程序。
 
-```sh
-code --install-extension opensider-vscode-darwin-arm64.vsix --force
+### 1. 安装
+
+一键安装：把下面这段提示词复制给你正在使用的本地 AI Agent（Claude Code、Codex、Cursor、OpenCode 等），它会下载和本机匹配的 `.vsix`、安装插件，并配好一个 Agent CLI。
+
+```
+帮我安装 OpenSider for VSCode。
+请先读取 https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/extension/skills/opensider-vscode/SKILL.md，按其安装流程执行。
 ```
 
-文件名里的平台是 `darwin-arm64`、`darwin-x64`、`linux-x64`、`linux-arm64`、`win32-x64`、`win32-arm64` 之一。Cursor 用同一份包：
+### 2. 更新
 
-```sh
-cursor --install-extension opensider-vscode-darwin-arm64.vsix --force
+一键更新：当侧栏提示有新版本时，可复制以下提示词给你的本地 Agent，在其引导下完成更新。
+
+```
+帮我更新 OpenSider for VSCode。
+请先读取 https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/extension/skills/opensider-vscode/SKILL.md，按其更新流程执行。
+```
+
+### 3. 卸载
+
+一键卸载：同样只需一段提示词，卸载时可选择保留或移除本地已有数据。
+
+```
+帮我卸载 OpenSider for VSCode。
+请先读取 https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/extension/skills/opensider-vscode/SKILL.md，按其卸载流程执行。
 ```
 
 装完执行一次 **Developer: Reload Window**。活动栏会出现 OpenSider 图标。首次打开时面板会移到右侧辅助栏，和 Copilot Chat 并列；之后你把它拖到哪里，它就留在哪里。
 
-有更新的 Release 时，侧栏右上角会出现更新按钮；每次打开面板还会直接弹出更新提示。提示词交给你自己的 Agent 去装，插件本身不下载安装包。
-
-从源码打包：
-
-```sh
-git clone https://github.com/parksben/opensider-vscode.git
-cd opensider-vscode
-go build -o packages/extension/bin/opensider-vscode-host ./cmd/opensider-vscode-host
-cd packages/extension && npm install && npm run build
-npx vsce package --out opensider-vscode.vsix
-code --install-extension opensider-vscode.vsix --force
-```
-
-## 准备一个 Agent
-
-插件不含模型，需要本机先有一个支持 ACP 的 Agent CLI 并完成登录。找不到任何 Agent 时，侧栏会给出下面这张卡片里的提示词。安装后的 skill 在 `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`。
+插件不含模型，驱动的是本机的 ACP Agent CLI。找不到任何 Agent 时，侧栏会给出同样形式的卡片提示词；安装后的 skill 在 `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`。
 
 ![没有找到可用的 Agent CLI](packages/extension/media/readme/zh/no-agent.png)
-
-Claude Code 和 Codex 本体不说 ACP，需要官方适配器。插件会在第一次连接时自动装进 `~/.opensider-vscode/runtime`，也可以手动装：
-
-```sh
-npm install --omit=dev --prefix ~/.opensider-vscode/runtime/claude-acp @agentclientprotocol/claude-agent-acp
-npm install --omit=dev --prefix ~/.opensider-vscode/runtime/codex-acp  @agentclientprotocol/codex-acp
-```
 
 ## 本地数据
 
