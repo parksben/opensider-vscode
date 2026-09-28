@@ -16,7 +16,17 @@ Press F5 in VS Code to launch an Extension Development Host. Set `OPENSIDER_VSCO
 
 ## README screenshots
 
-The screenshots are the real side panel, not mockups. From `packages/extension`, start Vite and open `src/sidepanel/shots.html?scene=setup`, `agents`, `chat`, `composer`, or `queue`, with `&lang=en` or `&lang=zh`. Capture at 1120×700 @2x into `packages/extension/media/readme/{en,zh}/`. That page is not packaged into the extension.
+The screenshots are the real side panel, not mockups. From `packages/extension`, start Vite and open `src/sidepanel/shots.html?scene=setup`, `agents`, `chat`, `composer`, `queue`, or `continue`, with `&lang=en` or `&lang=zh`. Capture at 1120×700 @2x into `packages/extension/media/readme/{en,zh}/`. That page is not packaged into the extension.
+
+## README banner
+
+`docs/banner.svg` (used by the GitHub READMEs) and `packages/extension/media/readme/banner.svg` (used by the packaged README) are generated together. Run:
+
+```sh
+python3 scripts/generate_banner.py
+```
+
+Layout, colours and copy live in `scripts/generate_banner.py`; the third-party vector marks it reads are in `scripts/brand/` (see `scripts/brand/README.md` for sources and trademark notes). The banner is the only image checked in as SVG — the side-panel screenshots above are PNG.
 
 ## Architecture
 

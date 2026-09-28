@@ -1,6 +1,18 @@
-# OpenSider for VS Code
+<div align="center">
+  <br />
+  <img alt="OpenSider" src="docs/banner.svg" />
+  <p>
+    Give your editor AI wings
+  </p>
+  <p>
+    <a href="https://github.com/parksben/opensider-vscode/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/parksben/opensider-vscode?label=RELEASE" /></a>
+    <a href="https://github.com/parksben/opensider-vscode/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/parksben/opensider-vscode?label=LICENSE" /></a>
+  </p>
+</div>
 
-English | [中文](https://github.com/parksben/opensider-vscode/blob/main/README.zh-CN.md)
+<div align="center">
+  English | <a href="https://github.com/parksben/opensider-vscode/blob/main/README.zh-CN.md">中文</a>
+</div>
 
 OpenSider runs the Agent CLI you already have — Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other [ACP](https://agentclientprotocol.com) agents — inside the VS Code side bar. There is no bundled model and no account of ours: it drives the CLI you installed and signed in to, in the workspace you have open. State stays on this machine under `~/.opensider-vscode`.
 
@@ -10,13 +22,13 @@ The panel follows VS Code's display language; the screenshots below are the Engl
 
 ## Highlights
 
-- **Runs in your workspace.** The agent's reads, edits, and shell commands resolve against the open folder — no scratch directory, no re-upload.
 - **Any ACP agent.** Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other CLIs from the ACP Registry; the model list comes from the agent.
 - **One session, any agent or model.** A session is not tied to one CLI — switch to another agent or model and carry on in the same session.
+- **Continue the same chat in the browser.** A conversation need not stay in the editor: hit **Continue in browser** on any reply and it hands the browser OpenSider a prompt carrying the conversation so far — and the browser side can hand a session back to VS Code the same way.
 
 ## Demo
 
-### Runs in your workspace
+### A workspace chat
 
 Reads, writes, and commands resolve against the open folder. A selection becomes an attachment chip above the composer, commands become terminal cards, and the files a turn writes collapse into a change list. The ring beside the model name is the context usage the agent reports — no report, no ring.
 
@@ -35,6 +47,12 @@ Type `/` to list the skills installed on this machine and put one at the caret. 
 ![The `/` menu listing installed skills](packages/extension/media/readme/en/composer.png)
 
 ![Queued messages with move-up and move-down buttons on hover](packages/extension/media/readme/en/queue.png)
+
+### Continue in the browser
+
+Halfway through in VS Code, hit **Continue in browser** on a reply and it packs the conversation into a prompt. Paste it into the browser OpenSider and the agent picks up from where this left off. The browser side hands a session back to VS Code the same way.
+
+![The prompt generated after clicking Continue in browser in VS Code](packages/extension/media/readme/en/continue-browser.png)
 
 ## Install & Use
 

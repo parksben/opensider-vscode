@@ -1,6 +1,18 @@
-# OpenSider for VS Code
+<div align="center">
+  <br />
+  <img alt="OpenSider" src="docs/banner.svg" />
+  <p>
+    为你的编辑器插上AI的翅膀
+  </p>
+  <p>
+    <a href="https://github.com/parksben/opensider-vscode/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/parksben/opensider-vscode?label=RELEASE" /></a>
+    <a href="https://github.com/parksben/opensider-vscode/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/parksben/opensider-vscode?label=LICENSE" /></a>
+  </p>
+</div>
 
-[English](https://github.com/parksben/opensider-vscode/blob/main/README.md) | 中文
+<div align="center">
+  <a href="https://github.com/parksben/opensider-vscode/blob/main/README.md">English</a> | 中文
+</div>
 
 OpenSider 把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及其它 [ACP](https://agentclientprotocol.com) Agent —— 放进 VS Code 侧栏。它不带模型，也没有我们的账号：用的是你装好并登录的 CLI，在你打开的工作区里干活。状态都留在本机 `~/.opensider-vscode` 下。
 
@@ -10,13 +22,13 @@ OpenSider 把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、Ope
 
 ## 功能亮点
 
-- **在工作区里运行。** Agent 的读取、修改和 shell 命令都作用于当前打开的文件夹，没有临时目录，也不用重新上传。
 - **接入任意 ACP Agent。** Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及 ACP Registry 里的其它 CLI；模型列表由 Agent 自己上报。
 - **同一会话里换 Agent 和模型。** 会话不绑死在某一家 CLI 上：随时切换到另一个 Agent 或模型，在同一个会话里继续。
+- **与浏览器 OpenSider 插件无缝续聊。** 会话不必锁在编辑器里：点任意回复上的「在浏览器中续聊」，就会带着这段对话生成一条提示词，粘进浏览器版 OpenSider 即可接着往下做；反过来，浏览器那边也能把会话交回 VS Code。
 
 ## 演示
 
-### 在工作区里运行
+### 工作区对话
 
 读取、修改和命令都作用于当前打开的文件夹。划选一段代码就变成输入框上方的附件芯片，命令变成终端卡片，这一轮写入的文件收成变更列表。模型名旁边的环是 Agent 上报的上下文用量 —— 不上报就不显示。
 
@@ -35,6 +47,12 @@ OpenSider 把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、Ope
 ![`/` 菜单列出本机已装的 skill](packages/extension/media/readme/zh/composer.png)
 
 ![悬浮队列消息显示上移、下移按钮](packages/extension/media/readme/zh/queue.png)
+
+### 与浏览器 OpenSider 续聊
+
+在 VS Code 里聊到一半，点回复上的「在浏览器中续聊」，它会把这段对话打包成一条提示词。复制到浏览器版 OpenSider，Agent 就从这里的状态接着做；浏览器那边同样能把会话交回 VS Code。
+
+![在 VS Code 里点「在浏览器中续聊」后生成的提示词](packages/extension/media/readme/zh/continue-browser.png)
 
 ## 安装使用
 
