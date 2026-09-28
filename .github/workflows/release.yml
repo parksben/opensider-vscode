@@ -92,7 +92,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: vsix-${{ matrix.target }}
-          path: opensider-vscode-${{ matrix.target }}.vsix
+          path: packages/opensider-vscode-${{ matrix.target }}.vsix
           if-no-files-found: error
 
   release:
