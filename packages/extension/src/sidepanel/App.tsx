@@ -1659,6 +1659,7 @@ export function App() {
               hostReady={status === "ready"}
               sessionId={selected.id}
               messages={selected.messages}
+              workspacePath={workspaceCwd}
               changedFiles={changedFiles}
               contextUsage={contextUsage}
               terminals={terminals}

@@ -12,6 +12,7 @@ import { DiffDocuments, DIFF_SCHEME } from "./diff-doc";
 import { OutputDocuments, OUTPUT_SCHEME } from "./output-doc";
 import { ensureExplorerDragHitTesting } from "./explorer-drag-style";
 import { TerminalRegistry } from "./terminal";
+import { browserExtensionInstalled } from "./browser-install";
 import { readEditorWindow } from "./window-info";
 
 type WebviewMessage =
@@ -26,6 +27,7 @@ type WebviewMessage =
       newText?: string | null;
     }
   | { type: "openExternal"; url: string }
+  | { type: "peer.probe"; requestId: string; target?: "browser" }
   | { type: "terminal.show"; terminalId: string }
   | { type: "output.open"; id: string; command: string; output: string }
   | { type: "selection.dismiss"; key: string };
@@ -186,6 +188,16 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     if (message.type === "output.open") {
       void this.outputs.open(message.id, message.command, message.output);
+      return;
+    }
+    if (message.type === "peer.probe") {
+      const requestId = message.requestId;
+      void Promise.resolve()
+        .then(() => browserExtensionInstalled())
+        .then(
+          (installed) => this.post({ type: "peer.probed", requestId, installed }),
+          () => this.post({ type: "peer.probed", requestId, installed: false }),
+        );
       return;
     }
     if (message.type === "openExternal") {
