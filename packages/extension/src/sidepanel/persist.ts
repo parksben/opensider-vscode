@@ -24,9 +24,8 @@ export function stateCacheKey(workspaceKey: string): string {
 
 /**
  * Set before the first load, from the identity the extension bakes into the document.
- * Empty means no folder is open, and a folder-less window caches nothing: the host
- * refuses to start an agent without a workspace, so any chat written there could never
- * be continued. See `Save` in internal/uistate.
+ * Empty means the home directory could not be resolved. A window with no folder open
+ * uses that home directory as its workspace, so chats there are kept and an agent can start.
  */
 let cacheKey = "";
 

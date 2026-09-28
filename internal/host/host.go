@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -405,8 +406,8 @@ func (h *Host) cancelConnect() error {
 }
 
 func (h *Host) connectAgent(providerID string, policy protocol.AgentPolicy) error {
-	if paths.WorkspaceDir() == "" {
-		return errors.New("open a folder in VS Code before connecting an agent")
+	if err := h.ensureWorkspace(); err != nil {
+		return err
 	}
 	seq := h.beginConnect()
 	if policy != "" {
@@ -1243,6 +1244,20 @@ func (h *Host) handlePrompt(msg map[string]any) error {
 	}
 	h.send(map[string]any{"type": "turn.end", "stopReason": stop, "interrupted": interrupted, "sessionId": runtime.client.GetSessionID()})
 	return nil
+}
+
+// ensureWorkspace gives a window with no folder the user's home directory, so picking
+// an agent is not blocked on File > Open Folder. Home follows the OS: HOME on Unix,
+// the user profile on Windows.
+func (h *Host) ensureWorkspace() error {
+	if paths.WorkspaceDir() != "" {
+		return nil
+	}
+	home := paths.Home()
+	if home == "" {
+		return errors.New("could not resolve the home directory")
+	}
+	return h.setWorkspace(home, home, filepath.Base(home))
 }
 
 func (h *Host) setWorkspace(dir, key, name string) error {

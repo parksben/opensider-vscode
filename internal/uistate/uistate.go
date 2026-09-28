@@ -342,7 +342,7 @@ func HasHistory(state map[string]any) bool {
 }
 
 // Load reassembles the state for this window: the current workspace's bucket plus the
-// shared preferences. A window with no folder open gets preferences only — see Save.
+// shared preferences. A window with no folder open is filed under the home directory.
 func Load() (map[string]any, bool) {
 	global, hasGlobal := readMap(paths.GlobalStatePath())
 	workspace, hasWorkspace := map[string]any(nil), false
@@ -369,10 +369,8 @@ func Load() (map[string]any, bool) {
 // Save mirrors the panel's state back to disk, splitting it and merging each half with
 // whatever another window may have written in the meantime.
 //
-// A window with no folder open still saves preferences but never sessions: without a
-// workspace the host refuses to start an agent at all, so chat written there could never
-// be continued, and filing it under a scratch bucket would only produce history the user
-// can never get back to.
+// Sessions are skipped only when there is still no workspace path. That happens when
+// the home directory itself cannot be resolved; a window with no folder open uses home.
 func Save(state map[string]any) error {
 	if state == nil {
 		return nil

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { homeDirectory } from "./workspace-files";
 
 export type CodeAttachment = {
   id: string;
@@ -42,5 +43,5 @@ export function workspaceCwd(): string | undefined {
     const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
     if (folder) return folder.uri.fsPath;
   }
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || homeDirectory() || undefined;
 }

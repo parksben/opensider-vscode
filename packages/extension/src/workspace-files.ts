@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import path from "node:path";
 import * as vscode from "vscode";
 
 export type FileTarget = {
@@ -21,8 +23,16 @@ function insideWorkspace(uri: vscode.Uri): boolean {
   return vscode.workspace.getWorkspaceFolder(uri) != null;
 }
 
-/** How a window identifies itself when storing state. Empty `key` means no folder open. */
+/** How a window identifies itself when storing state. Empty `key` means home could not be resolved. */
 export type WorkspaceIdentity = { key: string; name: string };
+
+/**
+ * The directory an agent should use when this window has no folder open.
+ * `homedir()` follows the platform: `$HOME` on macOS and Linux, the user profile on Windows.
+ */
+export function homeDirectory(): string {
+  return homedir();
+}
 
 /**
  * The stable identity of this window's workspace.
@@ -40,7 +50,9 @@ export function workspaceIdentity(): WorkspaceIdentity {
   }
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (folder) return { key: folder.uri.fsPath, name: folder.name };
-  return { key: "", name: "" };
+  const home = homeDirectory();
+  if (!home) return { key: "", name: "" };
+  return { key: home, name: path.basename(home) };
 }
 
 /**
