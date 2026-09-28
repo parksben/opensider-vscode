@@ -12,21 +12,17 @@ function changeIcon(change: ChangedFile["change"]) {
 }
 
 function DiffStats({ additions, deletions }: { additions?: number; deletions?: number }) {
-  const showAdd = additions != null && additions > 0;
-  const showDel = deletions != null && deletions > 0;
-  if (!showAdd && !showDel) return null;
+  // 新建（或删除）文件只有一个方向有行数，另一方向是 0。旧写法把 0 当「没有数据」一并藏掉，
+  // 新建文件就只剩 +N、甚至整块空白。两个数字都在有数据时一并展示，新建文件读作 `+N -0`。
+  if (additions == null && deletions == null) return null;
   return (
     <span className="ml-auto flex shrink-0 items-center gap-1.5 tabular-nums">
-      {showAdd ? (
-        <span className="text-[var(--vscode-gitDecoration-addedResourceForeground,var(--muted))]">
-          +{additions}
-        </span>
-      ) : null}
-      {showDel ? (
-        <span className="text-[var(--vscode-gitDecoration-deletedResourceForeground,var(--muted))]">
-          -{deletions}
-        </span>
-      ) : null}
+      <span className="text-[var(--vscode-gitDecoration-addedResourceForeground,var(--muted))]">
+        +{additions ?? 0}
+      </span>
+      <span className="text-[var(--vscode-gitDecoration-deletedResourceForeground,var(--muted))]">
+        -{deletions ?? 0}
+      </span>
     </span>
   );
 }
