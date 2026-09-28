@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -485,16 +485,13 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
  */
 async function installSkill(context: vscode.ExtensionContext): Promise<void> {
   try {
+    const source = path.join(context.extensionPath, "skills", "opensider-vscode");
     const target = path.join(homeDir(), "skills", "opensider-vscode");
     await mkdir(target, { recursive: true });
-    await copyFile(
-      path.join(context.extensionPath, "skills", "opensider-vscode", "SKILL.md"),
-      path.join(target, "SKILL.md"),
-    );
-    await copyFile(
-      path.join(context.extensionPath, "skills", "opensider-vscode", "update.md"),
-      path.join(target, "update.md"),
-    );
+    for (const name of await readdir(source)) {
+      if (!name.endsWith(".md")) continue;
+      await copyFile(path.join(source, name), path.join(target, name));
+    }
   } catch {
     // The sidebar still shows the prompt; a missing copy only costs the agent one read.
   }
