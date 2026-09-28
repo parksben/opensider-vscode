@@ -54,6 +54,7 @@ window.addEventListener("message", (event: MessageEvent) => {
         state?: TerminalState;
         cwd?: string;
         name?: string;
+        statePath?: string;
       }
     | undefined;
   if (!data) return;
@@ -84,7 +85,9 @@ window.addEventListener("message", (event: MessageEvent) => {
   }
   if (data.type === "workspace") {
     window.dispatchEvent(
-      new CustomEvent(WORKSPACE_EVENT, { detail: { cwd: data.cwd ?? "", name: data.name ?? "" } }),
+      new CustomEvent(WORKSPACE_EVENT, {
+        detail: { cwd: data.cwd ?? "", name: data.name ?? "", statePath: data.statePath ?? "" },
+      }),
     );
   }
 });

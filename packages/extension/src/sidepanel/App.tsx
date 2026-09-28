@@ -126,6 +126,7 @@ export function App() {
   const [terminals, setTerminals] = useState<Record<string, TerminalState>>({});
   /** 当前 VS Code 工作区根目录，用于把 Agent 写过的绝对路径收敛成相对路径展示。 */
   const [workspaceCwd, setWorkspaceCwd] = useState("");
+  const [statePath, setStatePath] = useState("");
   /** id → ISO time for sessions the user deleted; see PersistedState.deletedSessions. */
   const [deletedSessions, setDeletedSessions] = useState<Record<string, string>>({});
   const [shareActiveFile, setShareActiveFile] = useState(false);
@@ -478,8 +479,9 @@ export function App() {
 
   useEffect(() => {
     const onWorkspace = (event: Event) => {
-      const detail = (event as CustomEvent).detail as { cwd?: string } | undefined;
+      const detail = (event as CustomEvent).detail as { cwd?: string; statePath?: string } | undefined;
       setWorkspaceCwd(detail?.cwd ?? "");
+      setStatePath(detail?.statePath ?? "");
     };
     const onTerminal = (event: Event) => {
       const state = (event as CustomEvent).detail as TerminalState;
@@ -1660,6 +1662,7 @@ export function App() {
               sessionId={selected.id}
               messages={selected.messages}
               workspacePath={workspaceCwd}
+              statePath={statePath}
               changedFiles={changedFiles}
               contextUsage={contextUsage}
               terminals={terminals}

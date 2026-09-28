@@ -10,8 +10,8 @@ import { AgentOptionSelect } from "./AgentOptionSelect";
 import type { Locale } from "../i18n";
 import { t } from "../i18n";
 import { closeAtMenuLock, installAtMenuGuard, openAtMenuLock, shouldBlockSubmit } from "../at-menu-lock";
-import { composerHasContent, displayMentionText, stripAttachmentMentions } from "../mentions";
-import { BROWSER_REPO, buildHandoffPrompt, type HandoffTurn } from "../handoff";
+import { composerHasContent, stripAttachmentMentions } from "../mentions";
+import { BROWSER_REPO, buildHandoffPrompt, handoffCutoff } from "../handoff";
 import { groupModelsByPrefix, modelShortName } from "../model-groups";
 import { requestBrowserProbe } from "../peer-probe";
 import { STICKY_PX, useThreadFollow } from "../thread-follow";
@@ -108,6 +108,7 @@ export function ChatPane({
   agentOptions,
   onAgentOption,
   workspacePath,
+  statePath,
   hitl,
   todos,
   changedFiles,
@@ -179,6 +180,8 @@ export function ChatPane({
   onAgentOption?: (configId: string, value: string) => void;
   /** Workspace folder named in the "continue in browser" prompt. */
   workspacePath?: string;
+  /** Absolute path of this workspace's `ui-state.json`. */
+  statePath?: string;
 }) {
   // 引擎广告的其它配置项按类别分流：`thought_level` 是模型钮旁边的推理档位钮，
   // `model_config` 放进模型菜单里——工具栏这一行已经挤不下更多钮了。
@@ -767,20 +770,19 @@ export function ChatPane({
               onFork={onFork}
               onRegenerate={onRegenerate}
               onContinue={(messageId) => {
+                const cut = handoffCutoff(messages, messageId);
+                if (!cut) return;
                 const prompt = buildHandoffPrompt({
                   locale,
                   target: "browser",
-                  turns: handoffTurns(messages, messageId),
+                  statePath: statePath ?? "",
+                  sessionId,
+                  beforeRound: cut.beforeRound,
+                  throughMessageId: cut.throughMessageId,
+                  nextRoundMessageId: cut.nextRoundMessageId,
                   workspace: workspacePath,
                 });
-                void (async () => {
-                  try {
-                    await writeClipboard(prompt);
-                  } catch {
-                    // The dialog still shows the prompt, so it can be copied from there.
-                  }
-                  setHandoff({ prompt, installed: await requestBrowserProbe() });
-                })();
+                void requestBrowserProbe().then((installed) => setHandoff({ prompt, installed }));
               }}
             />
             <div ref={threadEndRef} aria-hidden className="h-px w-full" />
@@ -1667,25 +1669,6 @@ function ModelConfigRow({
       )}
     </div>
   );
-}
-
-function handoffTurns(messages: ChatMessage[], messageId: string): HandoffTurn[] {
-  const end = messages.findIndex((message) => message.id === messageId);
-  const slice = end < 0 ? messages : messages.slice(0, end + 1);
-  return slice.flatMap((message) => {
-    const raw = stripEnvPrompt(displayMentionText(textOf(message.content))).trim();
-    const tools = [
-      ...new Set(
-        message.content
-          .filter((part) => part.type === "tool-call")
-          .map((part) => part.toolName)
-          .filter(Boolean),
-      ),
-    ];
-    const text = [raw, tools.length ? `[${tools.join(", ")}]` : ""].filter(Boolean).join("\n");
-    if (!text) return [];
-    return [{ role: message.role, text }];
-  });
 }
 
 function replyMarkdown(content: ChatPart[]): string {

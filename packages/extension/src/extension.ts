@@ -13,6 +13,7 @@ import { OutputDocuments, OUTPUT_SCHEME } from "./output-doc";
 import { ensureExplorerDragHitTesting } from "./explorer-drag-style";
 import { TerminalRegistry } from "./terminal";
 import { browserExtensionInstalled } from "./browser-install";
+import { workspaceStatePath } from "./state-path";
 import { readEditorWindow } from "./window-info";
 
 type WebviewMessage =
@@ -391,7 +392,13 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     // a multi-root workspace, where cwd follows the active editor.
     if (cwd) this.host.send({ type: "workspace.set", cwd, key: identity.key, name: identity.name });
     const name = identity.name || (cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd) : "");
-    this.post({ type: "workspace", cwd: cwd ?? "", name, key: identity.key });
+    this.post({
+      type: "workspace",
+      cwd: cwd ?? "",
+      name,
+      key: identity.key,
+      statePath: workspaceStatePath(identity.key, identity.name || name),
+    });
   }
 
   private pushSelection(): void {

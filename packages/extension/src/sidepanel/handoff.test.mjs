@@ -13,7 +13,8 @@ const outfile = path.join(root, "node_modules/.cache/handoff.test.cjs");
 buildSync({
   stdin: {
     contents: [
-      'export { buildHandoffPrompt } from "./handoff";',
+      'export { buildHandoffPrompt, handoffCutoff } from "./handoff";',
+      'export { workspaceStatePath } from "../state-path";',
       'export { groupModelsByPrefix, modelShortName } from "./model-groups";',
       'export { nextThreadScroll } from "./thread-follow";',
       'export { browserExtensionInstalled } from "../browser-install";',
@@ -29,8 +30,14 @@ buildSync({
   logLevel: "silent",
 });
 
-const { buildHandoffPrompt, groupModelsByPrefix, modelShortName, nextThreadScroll, browserExtensionInstalled } =
-  createRequire(import.meta.url)(outfile);
+const {
+  buildHandoffPrompt,
+  groupModelsByPrefix,
+  modelShortName,
+  nextThreadScroll,
+  browserExtensionInstalled,
+  workspaceStatePath,
+} = createRequire(import.meta.url)(outfile);
 
 test("groups model names on the slash", () => {
   const groups = groupModelsByPrefix([
@@ -47,25 +54,51 @@ test("groups model names on the slash", () => {
   );
 });
 
-test("handoff prompt names the browser extension and the workspace", () => {
+test("handoff prompt points at the session file and stops before the next round", () => {
+  const { handoffCutoff } = createRequire(import.meta.url)(outfile);
+  const cut = handoffCutoff(
+    [
+      { id: "u1", role: "user" },
+      { id: "a1", role: "assistant" },
+      { id: "u2", role: "user" },
+      { id: "a2", role: "assistant" },
+    ],
+    "a1",
+  );
+  assert.equal(cut.beforeRound, 2);
+  assert.equal(cut.throughMessageId, "a1");
+  assert.equal(cut.nextRoundMessageId, "u2");
   const prompt = buildHandoffPrompt({
     locale: "zh",
     target: "browser",
+    statePath: "/tmp/ui-state.json",
+    sessionId: "sess",
+    ...cut,
     workspace: "/tmp/repo",
-    turns: [
-      { role: "user", text: "看一下滚动" },
-      { role: "assistant", text: "已经钉住了" },
-    ],
   });
   assert.match(prompt, /浏览器端 OpenSider/);
-  assert.match(prompt, /工作区：\/tmp\/repo/);
-  assert.match(prompt, /User: 看一下滚动/);
+  assert.match(prompt, /\/tmp\/ui-state\.json/);
+  assert.match(prompt, /只看第 2 轮之前/);
+  assert.match(prompt, /sess/);
+  assert.doesNotMatch(prompt, /User: /);
 });
 
 test("scrolled-up reading keeps its place when the transcript grows", () => {
   assert.equal(nextThreadScroll(true, 0, -40), null);
   assert.equal(nextThreadScroll(true, -20, -40), 0);
   assert.equal(nextThreadScroll(false, -200, -40), -240);
+});
+
+test("workspace state path matches the host bucket", () => {
+  const file = workspaceStatePath(
+    "/Users/jyxc-dz-0100623/Desktop/projects/opensider-vscode",
+    "opensider-vscode",
+    "/Users/jyxc-dz-0100623",
+  );
+  assert.equal(
+    file,
+    "/Users/jyxc-dz-0100623/.opensider-vscode/workspaces/opensider-vscode-28b83ff78e19/ui-state.json",
+  );
 });
 
 test("detects an unpacked browser extension from the profile preferences", () => {
