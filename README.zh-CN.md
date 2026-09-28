@@ -1,42 +1,43 @@
-# OpenSider for VSCode
+# OpenSider for VS Code
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/README.md) | 中文
 
-在 VS Code 侧栏里，用你本机已经装好并登录的 Agent CLI 干活。支持 Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及其它 [ACP](https://agentclientprotocol.com) Agent。插件本身不带模型。对话、文件修改和命令都发生在当前工作区，会话数据留在本机 `~/.opensider-vscode`。
+OpenSider 把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及其它 [ACP](https://agentclientprotocol.com) Agent —— 放进 VS Code 侧栏。它本身不带模型，也没有我们的账号：用的是你装好并登录的那个 CLI，在你打开的文件夹里干活。所有存储都在本机 `~/.opensider-vscode` 下。
 
-它是 [OpenSider](https://github.com/parksben/opensider) 浏览器扩展的 VS Code 版：同一套侧栏界面，同一个 ACP 引擎，工作目录换成你当前打开的文件夹。可以当作 GitHub Copilot Chat 的替代，区别是模型和账号都来自你自己的 Agent CLI。
+它是 [OpenSider](https://github.com/parksben/opensider) 浏览器扩展的 VS Code 版：同一套侧栏界面，同一个 ACP 引擎，工作目录换成你当前打开的文件夹。可以当作 GitHub Copilot Chat 的替代，模型和账号都来自你自己的 CLI。
 
-界面语言跟随 VS Code。下面的截图是中文界面。英文文档是仓库里的默认 [README](https://github.com/parksben/opensider-vscode/blob/main/README.md)。
+界面语言跟随 VS Code。下面的截图是中文界面。
 
-## 界面
+## 功能亮点
 
-### 安装后还没有可用的 Agent
+- **在打开的文件夹里干活。** 读写和命令都作用于你当前打开的文件夹，而不是某个临时目录。
+- **自带 Agent 和模型。** Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及 ACP Registry 里的其它 CLI。随时切换 Agent 或模型，列表就是本机实际装了什么。
+- **划选即上下文。** 选中代码，输入框上方出现附件芯片；右键菜单里的 **Add Selection to OpenSider** 可以再钉几段。
+- **命令和变更都在原地。** 命令输出是一张实时卡片，一键跳进 VS Code 终端；这一轮写过的文件收成「N 个文件已变更」，点开就是那次写入的 diff。
+- **`/` 唤起 skill，悬浮调整队列。** 输入 `/` 列出本机已装的 skill，按光标位置落芯片；回复进行中，新消息进队列，悬浮就能上移或下移。
+- **默认全部在本地。** 会话、偏好、Agent 运行时都在 `~/.opensider-vscode`，不上传。
 
-扫完本机、一个 ACP CLI 都没有时，侧栏不会进入聊天，而是停在引导页。顶栏是「离线」和「新会话」。卡片里是一段可复制的提示词，把它交给手边任意一个本地 AI Agent，对方会按扩展内置的 skill 把 CLI 装好。装好后点「重新扫描」。
+## 演示
 
-![没有找到可用的 Agent CLI](packages/extension/media/readme/zh/no-agent.png)
+### 在打开的文件夹里干活
 
-### 扫到 CLI 之后
+读写和命令都作用于当前打开的文件夹。划选一段代码就变成输入框上方的附件芯片，命令变成终端卡片，这一轮写过的文件收成变更列表。模型名旁边的环是 Agent 上报的上下文用量 —— 不上报就不显示。
 
-点一个名字就开始连接。列表只包含这次在本机找到的 CLI，不是写死的目录。
+![工作区对话：附件芯片、终端卡片和文件变更列表](packages/extension/media/readme/zh/workspace-chat.png)
+
+### 自带 Agent
+
+点一个名字就开始连接。列表是这次在本机找到的 CLI，不是写死的目录。随时可以换 Agent 或模型，模型列表来自各家自己上报的内容。
 
 ![点击 Agent 以开始连接](packages/extension/media/readme/zh/pick-agent.png)
 
-### 连上之后，对话在当前工作区里进行
+### Skill 与队列
 
-编辑器里划选一段代码，输入框上方会出现带文件名和行号的附件。Agent 跑的命令显示成终端卡片，能跳进 VS Code 终端。这一轮写过的文件收成「N 个文件已变更」，点文件名打开这次写入前后的 diff。模型名旁边的环是 Agent 自己上报的上下文用量，不上报就不显示。
+输入 `/` 会列出本机已装的 skill，并把它放在光标处。回复还在跑时，新消息先排队；悬浮某一行可以上移或下移。
 
-![工作区对话、终端、文件变更和划选附件](packages/extension/media/readme/zh/workspace-chat.png)
+![`/` 菜单列出本机已装的 skill](packages/extension/media/readme/zh/composer.png)
 
-## 它能做什么
-
-- **对话在当前工作区里进行。** Agent 的读写、命令都作用于你打开的文件夹，不是某个临时目录。
-- **随时换 Agent 和模型。** Cursor、OpenCode、GitHub Copilot CLI、Claude Code、Codex、Gemini、Qwen、Kimi、iFlow、Trae、Qoder，以及 ACP Registry 里的其它 CLI。模型列表来自各家自己广告的内容，不写死。
-- **命令跑在真实终端里。** 支持 ACP 终端的 Agent（Codex、Copilot CLI）会把命令交给 VS Code 的终端执行，侧栏用卡片展示实时输出，可以一键跳到终端窗口继续手动输入。不支持的 Agent 同样有卡片，按钮改为在只读编辑器标签里看输出。
-- **划选代码即附件。** 在编辑器里选中一段代码，输入框上方就出现带文件名和行号的芯片；右键「Add Selection to OpenSider」可以钉住多段。
-- **每轮变更一目了然。** 一轮里写过的文件汇总成「N 个文件已变更」，点击直接打开对应 diff。
-- **上下文用量。** Agent 上报时，模型选择器左侧会出现一个环形进度条，悬停显示已用比例与 token 数。
-- **会话留在本地。** 全部存在 `~/.opensider-vscode`，不上传任何服务器。
+![悬浮队列消息显示上移、下移按钮](packages/extension/media/readme/zh/queue.png)
 
 ## 安装
 
@@ -69,7 +70,9 @@ code --install-extension opensider-vscode.vsix --force
 
 ## 准备一个 Agent
 
-插件不含模型，需要本机先有一个支持 ACP 的 Agent CLI 并完成登录。找不到任何 Agent 时，侧栏会给出上面那张卡片里的提示词。安装后的 skill 在 `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`。
+插件不含模型，需要本机先有一个支持 ACP 的 Agent CLI 并完成登录。找不到任何 Agent 时，侧栏会给出下面这张卡片里的提示词。安装后的 skill 在 `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`。
+
+![没有找到可用的 Agent CLI](packages/extension/media/readme/zh/no-agent.png)
 
 Claude Code 和 Codex 本体不说 ACP，需要官方适配器。插件会在第一次连接时自动装进 `~/.opensider-vscode/runtime`，也可以手动装：
 
@@ -125,7 +128,7 @@ npx tsc --noEmit                     # 类型检查
 
 在 VS Code 里按 F5 启动 Extension Development Host 调试。想指向另一个宿主二进制时，设 `OPENSIDER_VSCODE_HOST` 环境变量。
 
-README 里的截图来自真实侧栏：在 `packages/extension` 里启动 Vite 后打开 `src/sidepanel/shots.html?scene=setup`、`agents` 或 `chat`，并用 `&lang=en` 或 `&lang=zh` 选语言。这个页面不打进扩展包。
+README 里的截图来自真实侧栏：在 `packages/extension` 里启动 Vite 后打开 `src/sidepanel/shots.html?scene=setup`、`agents`、`chat`、`composer` 或 `queue`，并用 `&lang=en` 或 `&lang=zh` 选语言。这个页面不打进扩展包。
 
 更新说明见 [CHANGELOG.zh-CN.md](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)。
 

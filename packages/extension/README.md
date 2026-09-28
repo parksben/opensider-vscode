@@ -2,41 +2,42 @@
 
 English | [中文](https://github.com/parksben/opensider-vscode/blob/main/README.zh-CN.md)
 
-OpenSider for VS Code drives an Agent CLI that is already installed and signed in on this machine — Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other [ACP](https://agentclientprotocol.com) agents. The extension ships no model of its own. Chat, file edits, and commands stay in the current workspace, and session data stays on disk under `~/.opensider-vscode`.
+OpenSider puts the Agent CLI you already have — Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other [ACP](https://agentclientprotocol.com) agents — into the VS Code side bar. There is no bundled model and no account of ours: it drives the CLI you installed and signed in to, inside the folder you have open. Everything it stores stays on this machine under `~/.opensider-vscode`.
 
-It is the VS Code edition of the [OpenSider](https://github.com/parksben/opensider) browser extension: the same side panel, the same ACP engine, with the working directory set to the folder you have open. You can use it in place of GitHub Copilot Chat. The difference is that the model and the account come from your own Agent CLI.
+It is the VS Code edition of the [OpenSider](https://github.com/parksben/opensider) browser extension: the same side panel and the same ACP engine, with the working directory set to your open folder. Use it in place of GitHub Copilot Chat — the model and the account come from your own CLI.
 
-The panel follows the VS Code display language. The screenshots below are the English UI. Chinese documentation, with Chinese screenshots, is on GitHub: [README.zh-CN.md](https://github.com/parksben/opensider-vscode/blob/main/README.zh-CN.md).
+The panel follows the VS Code display language. The screenshots below are the English UI.
 
-## The panel
+## Highlights
 
-### No agent yet
+- **Chat where you work.** Reads, writes, and commands apply to the folder you have open, not a scratch directory.
+- **Bring your own agent and model.** Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other CLIs from the ACP Registry. Switch agent or model at any time; each list is what this machine actually has.
+- **A selection is context.** Select code and it appears as an attachment chip above the composer. Right-click and pick **Add Selection to OpenSider** to pin more ranges.
+- **Commands and changes, in place.** Command output shows as a live card — one click focuses the VS Code terminal. Files written during the turn collapse into “N files changed”; click one to open that edit’s diff.
+- **Skills on `/`, order on hover.** Type `/` to list the skills installed on this machine and drop one wherever the caret is. While a reply runs, messages queue up and can be moved up or down on hover.
+- **Local by default.** Sessions, preferences, and the agent runtime live under `~/.opensider-vscode`. Nothing is uploaded.
 
-After install, if a scan finds no ACP CLI, the panel does not open a chat. It stays on a setup card. The header reads “offline” and “New Chat”. The card holds a prompt you can copy and hand to any local AI agent you already have. That agent follows the skill bundled with this extension and installs a CLI. When it is done, click **Rescan**.
+## Demo
 
-![No agent CLI found](media/readme/en/no-agent.png)
+### Chat where you work
 
-### After a CLI is found
+Reads, writes, and commands apply to the folder you have open. A selection becomes an attachment chip above the composer, commands become terminal cards, and the files written this turn collapse into a change list. The ring beside the model name is the context usage the agent reports — no report, no ring.
 
-Click a name to connect. The list is whatever this machine actually has, not a fixed catalog.
+![Workspace chat with a selection chip, a terminal card, and the changed-file list](media/readme/en/workspace-chat.png)
+
+### Bring your own agent
+
+Click a name to connect. The list is whatever this machine actually has, not a fixed catalog. You can switch agent or model at any time, and each model list comes from the agent itself.
 
 ![Click an Agent to connect](media/readme/en/pick-agent.png)
 
-### Chat runs in the current workspace
+### Skills and the queue
 
-Select code in the editor and a chip with the file name and line range appears above the composer. Commands show up as terminal cards and can jump into a VS Code terminal. Files written in the turn are collected as “N files changed”; click a name to open the before/after diff. The ring next to the model name is context usage reported by the agent. If the agent does not report it, the ring is absent.
+Type `/` to see the skills installed on this machine and put one at the caret. While a reply is still running, new messages wait in the queue; hover a queued row to move it up or down.
 
-![Workspace chat, terminal, changed files, and a selection chip](media/readme/en/workspace-chat.png)
+![The `/` menu listing installed skills](media/readme/en/composer.png)
 
-## What it does
-
-- **Chat runs in the current workspace.** Reads, writes, and commands apply to the folder you have open, not a scratch directory.
-- **Switch agents and models at any time.** Cursor, OpenCode, GitHub Copilot CLI, Claude Code, Codex, Gemini, Qwen, Kimi, iFlow, Trae, Qoder, and other CLIs from the ACP Registry. Model lists come from what each agent advertises.
-- **Commands run in a real terminal.** Agents that speak ACP terminals (Codex, Copilot CLI) hand the command to a VS Code terminal. The side panel shows a live card, and one click focuses that terminal so you can keep typing. Other agents still get a card; the button opens the output in a read-only editor tab.
-- **A selection is an attachment.** Select code in the editor and a chip with the file name and line range appears above the composer. **Add Selection to OpenSider** in the editor context menu pins extra ranges.
-- **Each turn’s edits are listed.** Files written in the turn collapse to “N files changed”. Click one to open that edit’s diff.
-- **Context usage.** When the agent reports it, a ring appears beside the model picker. Hover for the ratio and the token counts.
-- **Sessions stay local.** Everything is stored under `~/.opensider-vscode`. Nothing is uploaded.
+![Queued messages with move-up and move-down buttons on hover](media/readme/en/queue.png)
 
 ## Install
 
@@ -54,7 +55,7 @@ cursor --install-extension opensider-vscode-darwin-arm64.vsix --force
 
 Then run **Developer: Reload Window**. An OpenSider icon appears in the activity bar. The first time you open it, the panel moves to the secondary side bar, next to Copilot Chat. After that it stays wherever you drag it.
 
-When a newer release exists, the panel shows an update button and, on each load, the update dialog. That dialog is a prompt for your own agent. It does not download the package by itself.
+When a newer release exists, the panel shows an update button and, on each load, the update dialog. That dialog is a prompt for your own agent; it does not download the package by itself.
 
 From source:
 
@@ -69,7 +70,9 @@ code --install-extension opensider-vscode.vsix --force
 
 ## Prepare an agent
 
-The extension includes no model. You need an ACP Agent CLI on this machine, already signed in. When none is found, the panel shows the card in the first screenshot. After install, the skill it points at lives at `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`.
+The extension includes no model. You need an ACP Agent CLI on this machine, already signed in. When none is found, the panel shows the card in the screenshot below. The skill it points at lives at `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`.
+
+![No agent CLI found](media/readme/en/no-agent.png)
 
 Claude Code and Codex do not speak ACP themselves. They need the official adapters. The extension installs those into `~/.opensider-vscode/runtime` on the first connection. You can also install them by hand:
 
@@ -125,11 +128,11 @@ npx tsc --noEmit                     # typecheck
 
 Press F5 in VS Code to launch an Extension Development Host. Set `OPENSIDER_VSCODE_HOST` to point at a different host binary.
 
-README screenshots are the real side panel. From `packages/extension`, start Vite and open `src/sidepanel/shots.html?scene=setup`, `agents`, or `chat`, with `&lang=en` or `&lang=zh`. That page is not packaged into the extension.
+README screenshots are the real side panel. From `packages/extension`, start Vite and open `src/sidepanel/shots.html?scene=setup`, `agents`, `chat`, `composer`, or `queue`, with `&lang=en` or `&lang=zh`. That page is not packaged into the extension.
 
 ## Known limits
 
-Agents implement ACP to different degrees. Some capabilities only appear for some of them:
+Agents implement ACP to different degrees, so some capabilities only appear for some of them:
 
 | Capability | Agents |
 |---|---|
@@ -137,7 +140,7 @@ Agents implement ACP to different degrees. Some capabilities only appear for som
 | Context-usage ring | Codex, GitHub Copilot CLI |
 | Session modes (plan / build / …) | Whatever the agent advertises. Cursor and Claude Code do |
 
-Claude Code and Cursor Agent run commands themselves and do not report usage. The command card then falls back to the tool-call output, and the usage ring stays hidden. That is a protocol difference, not a bug in this extension.
+Claude Code and Cursor Agent run commands themselves and do not report usage. Their command card falls back to the tool-call output, and the usage ring stays hidden. That is a protocol difference, not a bug in this extension.
 
 ## License
 
