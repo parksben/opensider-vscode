@@ -74,7 +74,9 @@ npm install --omit=dev --prefix ~/.opensider-vscode/runtime/codex-acp  @agentcli
 
 | 路径 | 内容 |
 |---|---|
-| `~/.opensider-vscode/ui-state.json` | 会话列表、聊天记录与偏好设置 |
+| `~/.opensider-vscode/workspaces/<bucket>/ui-state.json` | 会话列表和工作区偏好 |
+| `~/.opensider-vscode/workspaces/<bucket>/sessions/<id>.json` | 该会话的消息 |
+| `~/.opensider-vscode/global-state.json` | 所有窗口共用的偏好 |
 | `~/.opensider-vscode/runtime/` | Claude Code / Codex 的 ACP 适配器 |
 | `~/.opensider-vscode/skills/` | 无 Agent 时用于引导配置的 skill |
 | `~/.opensider-vscode/uploads/` | 拖入或粘贴的附件副本 |

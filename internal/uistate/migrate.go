@@ -69,7 +69,7 @@ func Migrate() {
 		log.Log("ui-state migration: workspace meta write failed: " + err.Error())
 		return
 	}
-	if err := saveMerged(paths.WorkspaceUIStatePath(), workspace, MergeWorkspace); err != nil {
+	if err := saveWorkspace(paths.WorkspaceUIStatePath(), workspace); err != nil {
 		log.Log("ui-state migration: workspace write failed: " + err.Error())
 		return
 	}

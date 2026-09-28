@@ -74,7 +74,9 @@ npm install --omit=dev --prefix ~/.opensider-vscode/runtime/codex-acp  @agentcli
 
 | Path | Contents |
 |---|---|
-| `~/.opensider-vscode/ui-state.json` | Session list, transcript, and preferences |
+| `~/.opensider-vscode/workspaces/<bucket>/ui-state.json` | Session list and workspace preferences |
+| `~/.opensider-vscode/workspaces/<bucket>/sessions/<id>.json` | That session's messages |
+| `~/.opensider-vscode/global-state.json` | Preferences shared by every window |
 | `~/.opensider-vscode/runtime/` | ACP adapters for Claude Code and Codex |
 | `~/.opensider-vscode/skills/` | The skill used when no agent is installed yet |
 | `~/.opensider-vscode/uploads/` | Copies of dropped or pasted attachments |

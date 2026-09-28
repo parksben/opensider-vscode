@@ -193,6 +193,9 @@ func TestMigrationLandsInExactlyOneBucket(t *testing.T) {
 	if alphaState["theme"] != "dark" || alphaState["locale"] != "zh" {
 		t.Fatal("global preferences were lost in the migration")
 	}
+	if got := len(sessionList(alphaState["sessions"])[0]["messages"].([]any)); got != 2 {
+		t.Fatalf("migrated session lost its messages: %d", got)
+	}
 
 	// Second window: a different workspace must NOT inherit the history.
 	paths.SetWorkspace(filepath.Join(home, "beta"), filepath.Join(home, "beta"), "beta")
@@ -295,4 +298,155 @@ func TestConcurrentSavesToTheSameWorkspaceLoseNothing(t *testing.T) {
 	if len(got) != windows {
 		t.Fatalf("expected %d sessions after concurrent writes, got %d: %v", windows, len(got), got)
 	}
+}
+
+func TestSaveKeepsMessagesBesideTheIndex(t *testing.T) {
+	home := scratchHome(t)
+	paths.SetWorkspace(filepath.Join(home, "alpha"), filepath.Join(home, "alpha"), "alpha")
+
+	if err := Save(map[string]any{
+		"version":  float64(1),
+		"sessions": []any{session("s1", "2026-01-02T00:00:00Z", 3)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	index := readIndex(t, paths.WorkspaceUIStatePath())
+	stored := sessionList(index["sessions"])
+	if len(stored) != 1 {
+		t.Fatalf("index sessions: %d", len(stored))
+	}
+	if _, ok := stored[0]["messages"]; ok {
+		t.Fatal("ui-state.json still carries messages")
+	}
+	if str(stored[0]["bodyHash"]) == "" {
+		t.Fatal("index is missing the body hash used to skip unchanged writes")
+	}
+
+	body := readIndex(t, filepath.Join(filepath.Dir(paths.WorkspaceUIStatePath()), "sessions", "s1.json"))
+	if got := len(body["messages"].([]any)); got != 3 {
+		t.Fatalf("session file messages: %d", got)
+	}
+
+	loaded, ok := Load()
+	if !ok {
+		t.Fatal("load failed")
+	}
+	if got := len(sessionList(loaded["sessions"])[0]["messages"].([]any)); got != 3 {
+		t.Fatalf("hydrated messages: %d", got)
+	}
+	if _, ok := sessionList(loaded["sessions"])[0]["bodyHash"]; ok {
+		t.Fatal("body hash leaked into the state sent to the panel")
+	}
+}
+
+func TestInlineHistoryIsBackedUpThenSplit(t *testing.T) {
+	home := scratchHome(t)
+	paths.SetWorkspace(filepath.Join(home, "alpha"), filepath.Join(home, "alpha"), "alpha")
+	path := paths.WorkspaceUIStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"version":  float64(1),
+		"sessions": []any{session("legacy", "2026-01-01T00:00:00Z", 4)},
+	})
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, ok := Load()
+	if !ok {
+		t.Fatal("load failed")
+	}
+	if got := len(sessionList(loaded["sessions"])[0]["messages"].([]any)); got != 4 {
+		t.Fatalf("legacy messages did not come back: %d", got)
+	}
+	index := readIndex(t, path)
+	if _, ok := sessionList(index["sessions"])[0]["messages"]; ok {
+		t.Fatal("legacy file was not rewritten as an index")
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	var backup bool
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), "ui-state.json.sessions-backup-") {
+			backup = true
+		}
+	}
+	if !backup {
+		t.Fatal("the inline history was not backed up before the split")
+	}
+}
+
+func TestStaleSaveDoesNotClobberANewerTranscript(t *testing.T) {
+	home := scratchHome(t)
+	paths.SetWorkspace(filepath.Join(home, "alpha"), filepath.Join(home, "alpha"), "alpha")
+	if err := Save(map[string]any{"version": float64(1), "sessions": []any{session("s", "2026-01-05T00:00:00Z", 9)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(map[string]any{"version": float64(1), "sessions": []any{session("s", "2026-01-01T00:00:00Z", 1)}}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _ := Load()
+	if got := len(sessionList(loaded["sessions"])[0]["messages"].([]any)); got != 9 {
+		t.Fatalf("stale save overwrote the newer transcript: %d messages", got)
+	}
+}
+
+func TestUnchangedTranscriptIsNotRewritten(t *testing.T) {
+	home := scratchHome(t)
+	paths.SetWorkspace(filepath.Join(home, "alpha"), filepath.Join(home, "alpha"), "alpha")
+	state := map[string]any{"version": float64(1), "sessions": []any{session("s", "2026-01-05T00:00:00Z", 2)}}
+	if err := Save(state); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(filepath.Dir(paths.WorkspaceUIStatePath()), "sessions", "s.json")
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := info.ModTime()
+	time.Sleep(20 * time.Millisecond)
+	if err := Save(state); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ModTime() != old {
+		t.Fatal("an unchanged session file was rewritten")
+	}
+}
+
+func TestDeletedSessionDropsItsFile(t *testing.T) {
+	home := scratchHome(t)
+	paths.SetWorkspace(filepath.Join(home, "alpha"), filepath.Join(home, "alpha"), "alpha")
+	if err := Save(map[string]any{"version": float64(1), "sessions": []any{session("doomed", "2026-01-01T00:00:00Z", 1)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(map[string]any{
+		"version":         float64(1),
+		"sessions":        []any{},
+		"deletedSessions": map[string]any{"doomed": "2026-01-02T00:00:00Z"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(filepath.Dir(paths.WorkspaceUIStatePath()), "sessions", "doomed.json")
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatal("deleted session file is still on disk")
+	}
+}
+
+func readIndex(t *testing.T, path string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

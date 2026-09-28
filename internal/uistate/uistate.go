@@ -5,6 +5,10 @@
 // project live in one global file every window shares. See Split for the full division
 // and the reasoning behind each key.
 //
+// Inside a bucket, ui-state.json is only the index: session metadata, the selection,
+// and workspace preferences. Each session's messages (and the other bulky fields) live
+// in sessions/<id>.json, so saving one chat does not rewrite every other transcript.
+//
 // Several VS Code windows run several hosts against the same home directory at once, so
 // nothing here may assume it is the only writer:
 //
@@ -12,8 +16,9 @@
 //     sees either the old file or the new one and never a half-written one;
 //   - two windows on the *same* workspace merge instead of overwriting, so neither loses
 //     the sessions the other created (MergeWorkspace);
-//   - there is no lock anywhere. A lock would need releasing, and a host that is killed
-//     never gets to release it.
+//   - a bucket write holds .ui-state.lock for the read-merge-write. The file is removed
+//     when the write finishes. A host killed mid-write leaves it behind, and the next
+//     writer takes it once it is a minute old, so a dead process never has to release it.
 package uistate
 
 import (
@@ -342,7 +347,18 @@ func Load() (map[string]any, bool) {
 	global, hasGlobal := readMap(paths.GlobalStatePath())
 	workspace, hasWorkspace := map[string]any(nil), false
 	if path := paths.WorkspaceUIStatePath(); path != "" {
-		workspace, hasWorkspace = readMap(path)
+		if _, err := os.Stat(path); err == nil {
+			if unlock, lockErr := lockBucket(filepath.Dir(path)); lockErr == nil {
+				defer unlock()
+			}
+		}
+		loaded, _, err := loadSplit(path)
+		if err != nil {
+			// Splitting failed before the original was touched. Keep serving the
+			// inline file so this window still has its history.
+			loaded, _ = readMap(path)
+		}
+		workspace, hasWorkspace = loaded, loaded != nil
 	}
 	if !hasGlobal && !hasWorkspace {
 		return nil, false
@@ -374,7 +390,7 @@ func Save(state map[string]any) error {
 	if err := writeWorkspaceMeta(); err != nil {
 		return err
 	}
-	return saveMerged(target, workspace, MergeWorkspace)
+	return saveWorkspace(target, workspace)
 }
 
 func saveMerged(path string, incoming map[string]any, merge func(base, incoming map[string]any) map[string]any) error {

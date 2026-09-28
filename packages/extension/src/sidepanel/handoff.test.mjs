@@ -77,7 +77,7 @@ test("handoff prompt points at the session file and stops before the next round"
     workspace: "/tmp/repo",
   });
   assert.match(prompt, /浏览器端 OpenSider/);
-  assert.match(prompt, /\/tmp\/ui-state\.json/);
+  assert.match(prompt, /\/tmp\/sessions\/sess\.json/);
   assert.match(prompt, /只看第 2 轮之前/);
   assert.match(prompt, /sess/);
   assert.doesNotMatch(prompt, /User: /);
