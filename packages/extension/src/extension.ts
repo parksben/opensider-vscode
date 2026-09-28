@@ -49,6 +49,9 @@ function panelHtml(webview: vscode.Webview, extensionPath: string, version: stri
   // chats, so it is baked into the document instead.
   const boot = JSON.stringify(workspaceIdentity()).replace(/</g, "\\u003c");
   const extensionVersion = JSON.stringify(version).replace(/</g, "\\u003c");
+  // VS Code's display language (defaults to the OS language). The panel uses it as the
+  // first-run default, so a Chinese VS Code opens in 简体中文 instead of always English.
+  const language = JSON.stringify(vscode.env.language).replace(/</g, "\\u003c");
   html = html.replace(/(src|href)="([^"]+)"/g, (full, attr: string, url: string) => {
     if (/^(https?:|data:)/.test(url)) return full;
     const file = path.join(dist, url.replace(/^\.\//, ""));
@@ -65,7 +68,7 @@ function panelHtml(webview: vscode.Webview, extensionPath: string, version: stri
   return html.replace(
     "</head>",
     `<meta http-equiv="Content-Security-Policy" content="${csp}">\n` +
-      `<script nonce="${nonce}">window.__opensiderWorkspace=${boot};window.__opensiderExtensionVersion=${extensionVersion};</script>\n</head>`,
+      `<script nonce="${nonce}">window.__opensiderWorkspace=${boot};window.__opensiderExtensionVersion=${extensionVersion};window.__opensiderLanguage=${language};</script>\n</head>`,
   );
 }
 

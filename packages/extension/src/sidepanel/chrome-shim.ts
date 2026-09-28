@@ -71,7 +71,9 @@ const chromeShim = {
     sendMessage: async () => ({ ok: true }),
   },
   i18n: {
-    getUILanguage: () => document.documentElement.lang || navigator.language,
+    // VS Code's display language, baked into the document by panelHtml. Falls back to the
+    // document/browser language when the panel runs outside VS Code (the shots page).
+    getUILanguage: () => window.__opensiderLanguage || document.documentElement.lang || navigator.language,
   },
   storage: {
     local: localArea(),

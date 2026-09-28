@@ -498,7 +498,7 @@ export function fromPersisted(data: PersistedState | undefined | null): LoadedSt
     (selectedProviderId && selectedModelByProvider[selectedProviderId]) || data.selectedModelId || "";
   return {
     savedAt: data.savedAt,
-    locale: data.locale === "zh" || data.locale === "en" ? data.locale : (readCachedLocale() ?? detectBrowserLocale()),
+    locale: readCachedLocale() ?? detectBrowserLocale(),
     theme: isThemePreference(data.theme) ? data.theme : (readCachedTheme() ?? detectBrowserTheme()),
     selectedId,
     selectedModelId,

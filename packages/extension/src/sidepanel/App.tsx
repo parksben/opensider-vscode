@@ -29,7 +29,7 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { COMPACT_MAIN_PX, COMPOSER_ACTION_FLAT_PX, ICON_ONLY_MAIN_PX, MODEL_NARROW_MAIN_PX } from "./layout";
 import { PermissionBar } from "./components/PermissionBar";
 import { SessionDrawer } from "./components/SessionDrawer";
-import { applyLocale, detectBrowserLocale, readCachedLocale, t, type Locale } from "./i18n";
+import { applyLocale, detectBrowserLocale, readCachedLocale, writeCachedLocale, t, type Locale } from "./i18n";
 import { BindRegistry, findSessionIdByAcpId } from "./session-bind";
 import {
   applyResolvedTheme,
@@ -1840,6 +1840,9 @@ export function App() {
           onNewSession={newSession}
           onClose={() => setSessionsOpen(false)}
           onLocale={(next) => {
+            // Only an explicit pick writes the cache, so the default stays on VS Code's
+            // display language until then.
+            writeCachedLocale(next);
             applyLocale(next);
             setLocale(next);
           }}

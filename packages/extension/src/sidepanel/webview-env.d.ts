@@ -40,6 +40,8 @@ interface Window {
   __opensiderWorkspace?: { key: string; name: string };
   /** package.json version, baked in by panelHtml. */
   __opensiderExtensionVersion?: string;
+  /** VS Code's display language (BCP-47), baked in by panelHtml. */
+  __opensiderLanguage?: string;
 }
 
 declare module "*.svg?url" {

@@ -39,7 +39,8 @@ export function writeCachedLocale(locale: Locale): void {
 }
 
 export function applyLocale(locale: Locale): void {
-  writeCachedLocale(locale);
+  // Deliberately does not write the cache: the cache marks an explicit user choice, so
+  // the default keeps following VS Code's display language until the user picks one.
   document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
 }
 
