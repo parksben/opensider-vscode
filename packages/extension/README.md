@@ -14,9 +14,7 @@
   English | <a href="https://github.com/parksben/opensider-vscode/blob/main/README.zh-CN.md">中文</a>
 </div>
 
-OpenSider runs the Agent CLI you already have — Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other [ACP](https://agentclientprotocol.com) agents — inside the VS Code side bar. There is no bundled model and no account of ours: it drives the CLI you installed and signed in to, in the workspace you have open. State stays on this machine under `~/.opensider-vscode`.
-
-It is the VS Code counterpart of the [OpenSider](https://github.com/parksben/opensider) browser extension: the same panel and the same ACP engine, scoped to your workspace. Use it in place of GitHub Copilot Chat, with the model and account coming from your own CLI.
+OpenSider for VS Code integrates the Agent CLIs you already have — Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other [ACP](https://agentclientprotocol.com) agents — into the VS Code side bar Chat panel in one step, so you can use any of them seamlessly within the same project. It is the VS Code edition of the [OpenSider](https://github.com/parksben/opensider) browser extension: the same GUI and ACP engine architecture, and a drop-in alternative to GitHub Copilot Chat.
 
 The panel follows VS Code's display language; the screenshots below are the English UI.
 

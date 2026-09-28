@@ -14,9 +14,7 @@
   <a href="https://github.com/parksben/opensider-vscode/blob/main/README.md">English</a> | 中文
 </div>
 
-OpenSider 把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及其它 [ACP](https://agentclientprotocol.com) Agent —— 放进 VS Code 侧栏。它不带模型，也没有我们的账号：用的是你装好并登录的 CLI，在你打开的工作区里干活。状态都留在本机 `~/.opensider-vscode` 下。
-
-它是 [OpenSider](https://github.com/parksben/opensider) 浏览器扩展的 VS Code 版：同一套面板和 ACP 引擎，作用域换成你的工作区。可以当作 GitHub Copilot Chat 的替代，模型和账号都来自你自己的 CLI。
+OpenSider for VS Code：把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及其它 [ACP](https://agentclientprotocol.com) Agent —— 一键集成进 VS Code 侧边栏 Chat 面板，可以在同一个项目中无缝使用各类 Agent 终端。它是 [OpenSider](https://github.com/parksben/opensider) 浏览器扩展的 VS Code 版：相同的 GUI 设计和 ACP 引擎架构，可当作 GitHub Copilot Chat 的平替。
 
 面板语言跟随 VS Code 的显示语言；下面是中文界面。
 
