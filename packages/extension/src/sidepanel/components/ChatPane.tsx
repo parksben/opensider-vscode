@@ -219,14 +219,24 @@ export function ChatPane({
       const raw = (event as CustomEvent).detail as Parameters<typeof toItem>[0] | null;
       setAttachments((current) => {
         const rest = current.filter((item) => !(item.editorSelection && !item.pinned));
-        return raw ? [toItem(raw), ...rest] : rest;
+        // 已经钉住同一段选区时不再叠一条 live 芯片。
+        if (raw && !rest.some((item) => item.path === toItem(raw).path)) return [toItem(raw), ...rest];
+        return rest;
       });
     };
     const onPin = (event: Event) => {
       const raw = (event as CustomEvent).detail as Parameters<typeof toItem>[0] | null;
       if (!raw) return;
       const item = toItem({ ...raw, pinned: true });
-      setAttachments((current) => (current.some((entry) => entry.path === item.path) ? current : [...current, item]));
+      setAttachments((current) => {
+        const index = current.findIndex((entry) => entry.path === item.path);
+        // 同一段选区可能已经作为 live 芯片在栏里了：要就地升级成 pinned，
+        // 否则下一次选区变化会把它当成 live 冲掉，等于没钉。
+        if (index === -1) return [...current, item];
+        const next = current.slice();
+        next[index] = { ...item, pinned: true };
+        return next;
+      });
     };
     window.addEventListener(SELECTION_EVENT, onLive);
     window.addEventListener(PIN_EVENT, onPin);
