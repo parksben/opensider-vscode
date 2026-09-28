@@ -297,6 +297,7 @@ function ChatScene() {
             onDeleteQueued={noop}
             onSendQueuedNow={noop}
             onEditingQueued={noop}
+            onMoveQueued={noop}
             shareActiveFile={false}
             onShareActiveFile={noop}
             onRevise={noop}
