@@ -12,10 +12,8 @@ The panel follows VS Code's display language; the screenshots below are the Engl
 
 - **Runs in your workspace.** The agent's reads, edits, and shell commands resolve against the open folder — no scratch directory, no re-upload.
 - **Any ACP agent.** Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other CLIs from the ACP Registry. Switch agent or model mid-session; the model list comes from the agent.
-- **Editor context.** The active selection becomes an attachment with its file and line range; pin more ranges with **Add Selection to OpenSider** in the context menu.
-- **Reviewable turns.** Shell commands surface as terminal cards backed by a real VS Code terminal, and every file a turn writes is listed — each opens as a before/after diff.
-- **Skills and a queue.** `/` lists the skills installed on this machine and inserts one at the caret. Prompts sent while a turn is running queue up and can be reordered.
-- **Local state.** Sessions, preferences, and the agent runtime stay under `~/.opensider-vscode`. Nothing leaves the machine.
+- **Editor context.** Select code and it becomes an attachment with its file and line range; pin more selections from the editor's right-click menu with **Add Selection to OpenSider**.
+- **Reviewable and local.** Shell commands surface as terminal cards backed by a real VS Code terminal, every file a turn writes opens as a before/after diff, `/` inserts a skill and queued prompts reorder — and sessions, preferences and the agent runtime stay under `~/.opensider-vscode`.
 
 ## Demo
 
