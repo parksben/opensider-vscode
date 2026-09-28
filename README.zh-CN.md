@@ -83,36 +83,6 @@ OpenSider for VS Code：把本机已有的 Agent CLI —— Claude Code、Codex�
 
 装完执行一次 **Developer: Reload Window**。活动栏会出现 OpenSider 图标。首次打开时面板会移到右侧辅助栏，和 Copilot Chat 并列；之后你把它拖到哪里，它就留在哪里。
 
-插件不含模型，驱动的是本机的 ACP Agent CLI。找不到任何 Agent 时，侧栏会给出同样形式的卡片提示词；安装后的 skill 在 `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`。
-
-![没有找到可用的 Agent CLI](packages/extension/media/readme/zh/no-agent.png)
-
-## 本地数据
-
-| 路径 | 内容 |
-|---|---|
-| `~/.opensider-vscode/workspaces/<bucket>/ui-state.json` | 会话列表和工作区偏好 |
-| `~/.opensider-vscode/workspaces/<bucket>/sessions/<id>.json` | 该会话的消息 |
-| `~/.opensider-vscode/global-state.json` | 所有窗口共用的偏好 |
-| `~/.opensider-vscode/runtime/` | Claude Code / Codex 的 ACP 适配器 |
-| `~/.opensider-vscode/skills/` | 无 Agent 时用于引导配置的 skill |
-| `~/.opensider-vscode/uploads/` | 拖入或粘贴的附件副本 |
-| `~/.opensider-vscode/host.log` | 宿主日志，排查问题先看它 |
-
-和浏览器版的 `~/.opensider` 完全分开，两边互不影响，可以同时装。
-
-## 已知边界
-
-不同 Agent 对 ACP 的支持程度不同，有些能力只在部分 Agent 上出现：
-
-| 能力 | 支持的 Agent |
-|---|---|
-| VS Code 终端执行 | Codex、GitHub Copilot CLI |
-| 上下文用量环 | Codex、GitHub Copilot CLI |
-| 会话模式（plan / build…） | 各家自行广告，Cursor、Claude Code 等有 |
-
-Claude Code 和 Cursor Agent 自己跑命令、也不上报用量，此时命令卡片退回读取工具调用的输出，用量环不显示。这是协议层面的差异，不是缺陷。
-
 ## License
 
 MIT

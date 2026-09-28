@@ -83,36 +83,6 @@ Read https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/e
 
 Then run **Developer: Reload Window**. An OpenSider icon appears in the activity bar. The first time you open it, the panel moves to the secondary side bar, next to Copilot Chat. After that it stays wherever you drag it.
 
-The extension includes no model: it drives an ACP Agent CLI on this machine. When none is found, the panel shows a card with the same kind of prompt, and the skill it points at lives at `~/.opensider-vscode/skills/opensider-vscode/SKILL.md`.
-
-![No agent CLI found](media/readme/en/no-agent.png)
-
-## Local data
-
-| Path | Contents |
-|---|---|
-| `~/.opensider-vscode/workspaces/<bucket>/ui-state.json` | Session list and workspace preferences |
-| `~/.opensider-vscode/workspaces/<bucket>/sessions/<id>.json` | That session's messages |
-| `~/.opensider-vscode/global-state.json` | Preferences shared by every window |
-| `~/.opensider-vscode/runtime/` | ACP adapters for Claude Code and Codex |
-| `~/.opensider-vscode/skills/` | The skill used when no agent is installed yet |
-| `~/.opensider-vscode/uploads/` | Copies of dropped or pasted attachments |
-| `~/.opensider-vscode/host.log` | Host log. Start here when something fails |
-
-This tree is separate from the browser extension's `~/.opensider`. The two can be installed together.
-
-## Known limits
-
-Agents implement ACP to different degrees, so some capabilities only appear for some of them:
-
-| Capability | Agents |
-|---|---|
-| Run in a VS Code terminal | Codex, GitHub Copilot CLI |
-| Context-usage ring | Codex, GitHub Copilot CLI |
-| Session modes (plan / build / …) | Whatever the agent advertises. Cursor and Claude Code do |
-
-Claude Code and Cursor Agent run commands themselves and do not report usage. Their command card falls back to the tool-call output, and the usage ring stays hidden. That is a protocol difference, not a bug in this extension.
-
 ## License
 
 MIT
