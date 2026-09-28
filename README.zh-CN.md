@@ -11,9 +11,8 @@ OpenSider 把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、Ope
 ## 功能亮点
 
 - **在工作区里运行。** Agent 的读取、修改和 shell 命令都作用于当前打开的文件夹，没有临时目录，也不用重新上传。
-- **接入任意 ACP Agent。** Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及 ACP Registry 里的其它 CLI；会话中随时切换 Agent 或模型，模型列表由 Agent 自己上报。
-- **编辑器上下文。** 选中代码即成为带文件名和行号的附件；在编辑器里右键，用 **Add Selection to OpenSider** 可以再钉入其它选区。
-- **可审查、全本地。** shell 命令是终端卡片（背后是真实 VS Code 终端），每轮写入的文件以 diff 列出，`/` 插入 skill、队列可排序；会话、偏好与 Agent 运行时都在 `~/.opensider-vscode` 下。
+- **接入任意 ACP Agent。** Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及 ACP Registry 里的其它 CLI；模型列表由 Agent 自己上报。
+- **同一会话里换 Agent 和模型。** 会话不绑死在某一家 CLI 上：随时切换到另一个 Agent 或模型，在同一个会话里继续。
 
 ## 演示
 
