@@ -16,8 +16,6 @@
 
 OpenSider for VS Code：把本机已有的 Agent CLI —— Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及其它 [ACP](https://agentclientprotocol.com) Agent —— 一键集成进 VS Code 侧边栏 Chat 面板，可以在同一个项目中无缝使用各类 Agent 终端。它是 [OpenSider](https://github.com/parksben/opensider) 浏览器扩展的 VS Code 版：相同的 GUI 设计和 ACP 引擎架构，可当作 GitHub Copilot Chat 的平替。
 
-面板语言跟随 VS Code 的显示语言；下面是中文界面。
-
 ## 功能亮点
 
 - **接入任意 ACP Agent。** Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI，以及 ACP Registry 里的其它 CLI；模型列表由 Agent 自己上报。
