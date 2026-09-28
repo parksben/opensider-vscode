@@ -3,18 +3,19 @@
  * match the product. Not part of the extension build (vite packages index.html only).
  *
  *   cd packages/extension && npx vite --config vite.webview.config.ts --port 5199
- *   # then open /shots.html?scene=setup|agents|chat&lang=en|zh
+ *   # then open /shots.html?scene=setup|agents|chat|composer|queue&lang=en|zh
  */
 import "./chrome-shim";
 import { useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import type { AgentInfo, AgentModel, ChangedFile, TerminalState } from "@shared";
+import type { AgentInfo, AgentModel, ChangedFile, SkillItem, TerminalState } from "@shared";
 import logoUrl from "../../assets/icon.svg?url";
 import { PIN_EVENT } from "./bridge";
 import { AgentSetup } from "./components/AgentSetup";
 import { ChatPane } from "./components/ChatPane";
 import { Header } from "./components/Header";
 import type { ChatMessage } from "./chat-types";
+import type { QueuedMessage } from "./queued-message";
 import { applyLocale, type Locale } from "./i18n";
 import { applyResolvedTheme } from "./theme";
 import "./styles.css";
@@ -43,6 +44,43 @@ const MODELS: AgentModel[] = [
   { id: "gpt-5.4", name: "GPT-5.4" },
   { id: "claude-opus", name: "Claude Opus" },
 ];
+
+const SKILLS: SkillItem[] = [
+  {
+    name: "canvas",
+    alias: "canvas",
+    source: "cursor_builtin",
+    path: "~/.cursor/skills-cursor/canvas/SKILL.md",
+    description: "Design with canvas: layout, colour and typography passes.",
+  },
+  {
+    name: "coding-plan",
+    alias: "coding-plan",
+    source: "claude",
+    path: "~/.claude/skills/coding-plan/SKILL.md",
+    description: "Docs first, then code. The workflow to use for every feature.",
+  },
+  {
+    name: "openclawmp",
+    alias: "水产市场",
+    source: "claude",
+    path: "~/.claude/skills/openclawmp/SKILL.md",
+    description: "Browse the market and read every entry before installing it.",
+  },
+  {
+    name: "pptx",
+    alias: "pptx",
+    source: "stepclaw",
+    path: "~/.stepclaw/skills/pptx/SKILL.md",
+    description: "Build slides from an outline.",
+  },
+];
+
+const QUEUE: QueuedMessage[] = [
+  { id: "q1", text: "then add a test for the empty case", attachments: [] },
+  { id: "q2", text: "run the suite and fix what fails", attachments: [] },
+];
+
 
 const FILES: ChangedFile[] = [
   {
@@ -332,6 +370,89 @@ function ChatScene() {
   );
 }
 
+function PanelChat({
+  skills,
+  queue,
+  sessionTitle,
+}: {
+  skills?: SkillItem[];
+  queue?: QueuedMessage[];
+  sessionTitle: string;
+}) {
+  return (
+    <Frame selected={false}>
+      <div className="shot-column">
+        <PanelHeader
+          status="ready"
+          agents={FOUND}
+          selectedProviderId="codex"
+          showAgentSelect
+          sessionTitle={sessionTitle}
+        />
+        <div className="shot-body">
+          <ChatPane
+            locale={locale}
+            hostReady
+            sessionId="s1"
+            messages={messagesFor(locale)}
+            isRunning={false}
+            models={MODELS}
+            modelId="gpt-5.4"
+            showModelPicker
+            onSend={noop}
+            onEnqueue={noop}
+            onUpdateQueued={noop}
+            onDeleteQueued={noop}
+            onSendQueuedNow={noop}
+            onEditingQueued={noop}
+            onMoveQueued={noop}
+            shareActiveFile={false}
+            onShareActiveFile={noop}
+            onRevise={noop}
+            onCancel={noop}
+            onFork={noop}
+            onRegenerate={noop}
+            onPickAttachments={noopAsync}
+            onPasteImages={noopAsync}
+            onUploadFiles={noopAsync}
+            onAttachPaths={noopAsync}
+            onPreviewImage={async () => ""}
+            onModel={noop}
+            agentMode="ask"
+            onAgentMode={noop}
+            agentModes={[
+              { id: "agent", name: "Agent", kind: "agent" },
+              { id: "plan", name: "Plan", kind: "plan" },
+            ]}
+            agentModeId="agent"
+            onAgentModeId={noop}
+            iconOnly={false}
+            narrowModel={false}
+            flatActions={false}
+            skills={skills}
+            onRefreshSkills={noop}
+            queue={queue ?? []}
+          />
+        </div>
+      </div>
+    </Frame>
+  );
+}
+
+function ComposerScene() {
+  useEffect(() => {
+    markReady();
+  }, []);
+  return <PanelChat skills={SKILLS} sessionTitle={COPY[locale].title} />;
+}
+
+function QueueScene() {
+  useEffect(() => {
+    markReady();
+  }, []);
+  return <PanelChat skills={SKILLS} queue={QUEUE} sessionTitle={COPY[locale].title} />;
+}
+
 const SHOT_CSS = `
 .shot-window {
   display: flex;
@@ -424,5 +545,15 @@ const SHOT_CSS = `
 const scene = new URLSearchParams(location.search).get("scene");
 
 createRoot(document.getElementById("root")!).render(
-  scene === "agents" ? <SetupScene agents={FOUND} /> : scene === "chat" ? <ChatScene /> : <SetupScene agents={[]} />,
+  scene === "agents" ? (
+    <SetupScene agents={FOUND} />
+  ) : scene === "chat" ? (
+    <ChatScene />
+  ) : scene === "composer" ? (
+    <ComposerScene />
+  ) : scene === "queue" ? (
+    <QueueScene />
+  ) : (
+    <SetupScene agents={[]} />
+  ),
 );
