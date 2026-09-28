@@ -2,7 +2,7 @@
   <br />
   <img alt="OpenSider" src="docs/banner.svg" />
   <p>
-    为你的编辑器插上AI的翅膀
+    在 VS Code 中无缝使用多类 Agent
   </p>
   <p>
     <a href="https://github.com/parksben/opensider-vscode/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/parksben/opensider-vscode?label=RELEASE" /></a>

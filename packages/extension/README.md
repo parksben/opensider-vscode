@@ -2,7 +2,7 @@
   <br />
   <img alt="OpenSider" src="media/readme/banner.svg" />
   <p>
-    Give your editor AI wings
+    Seamlessly use multiple agents in VS Code
   </p>
   <p>
     <a href="https://github.com/parksben/opensider-vscode/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/parksben/opensider-vscode?label=RELEASE" /></a>
