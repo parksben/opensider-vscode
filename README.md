@@ -52,7 +52,7 @@ Halfway through in VS Code, hit **Continue in browser** on a reply and it packs 
 
 ## Install & Use
 
-> This extension is for VS Code and Cursor. Before installing, make sure you already have a running Agent CLI program on your machine.
+> This extension is for VS Code. Before installing, make sure you already have a running Agent CLI program on your machine.
 
 ### 1. Install
 

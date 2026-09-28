@@ -52,7 +52,7 @@ OpenSider for VS Code：把本机已有的 Agent CLI —— Claude Code、Codex�
 
 ## 安装使用
 
-> 本扩展用于 VS Code 与 Cursor。安装前请确保本机已有正在运行的 Agent CLI 程序。
+> 本扩展用于 VS Code。安装前请确保本机已有正在运行的 Agent CLI 程序。
 
 ### 1. 安装
 

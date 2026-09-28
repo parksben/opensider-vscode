@@ -7,10 +7,9 @@ Install the `.vsix` that matches this machine, then ask the user to reload the w
 
 ```sh
 code --list-extensions --show-versions
-cursor --list-extensions --show-versions
 ```
 
-The id is `opensider.opensider-vscode`. Remember which of `code` and `cursor` actually exist.
+The id is `opensider.opensider-vscode`. `code` is the VS Code command-line launcher.
 
 ## 2. Resolve the latest release
 
@@ -49,13 +48,12 @@ Download that one asset from the release. Do not clone the repo and do not build
 
 ## 4. Install it
 
-Run the install for every editor CLI that exists on this machine:
+Run the install:
 
 ```sh
 code --install-extension <file>.vsix --force
-cursor --install-extension <file>.vsix --force
 ```
 
 ## 5. Hand back
 
-Tell the user to run **Developer: Reload Window** in each editor they use. The new extension host does not load until then.
+Tell the user to run **Developer: Reload Window** in VS Code. The new extension host does not load until then.

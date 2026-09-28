@@ -37,11 +37,10 @@ Download that one asset from the release.
 
 ## 3. Install it
 
-Run the install for every editor CLI that exists on this machine:
+Run the install:
 
 ```sh
 code --install-extension <file>.vsix --force
-cursor --install-extension <file>.vsix --force
 ```
 
 ## 4. Set up an agent
@@ -52,5 +51,5 @@ are present.
 
 ## 5. Hand back
 
-Tell the user to run **Developer: Reload Window** in each editor they use. The new
+Tell the user to run **Developer: Reload Window** in VS Code. The new
 extension host does not load until then.
