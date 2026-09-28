@@ -3,20 +3,22 @@
  * match the product. Not part of the extension build (vite packages index.html only).
  *
  *   cd packages/extension && npx vite --config vite.webview.config.ts --port 5199
- *   # then open /shots.html?scene=setup|agents|chat|composer|queue&lang=en|zh
+ *   # then open /shots.html?scene=setup|agents|chat|composer|queue|continue&lang=en|zh
  */
 import "./chrome-shim";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import type { AgentInfo, AgentModel, ChangedFile, SkillItem, TerminalState } from "@shared";
 import logoUrl from "../../assets/icon.svg?url";
 import { PIN_EVENT } from "./bridge";
 import { AgentSetup } from "./components/AgentSetup";
 import { ChatPane } from "./components/ChatPane";
+import { ContinueDialog } from "./components/ContinueDialog";
 import { Header } from "./components/Header";
 import type { ChatMessage } from "./chat-types";
 import type { QueuedMessage } from "./queued-message";
-import { applyLocale, type Locale } from "./i18n";
+import { buildHandoffPrompt } from "./handoff";
+import { applyLocale, t, type Locale } from "./i18n";
 import { applyResolvedTheme } from "./theme";
 import "./styles.css";
 
@@ -370,6 +372,73 @@ function ChatScene() {
   );
 }
 
+function ChatBody({
+  skills,
+  queue,
+  sessionTitle,
+}: {
+  skills?: SkillItem[];
+  queue?: QueuedMessage[];
+  sessionTitle: string;
+}) {
+  return (
+    <div className="shot-column">
+      <PanelHeader
+        status="ready"
+        agents={FOUND}
+        selectedProviderId="codex"
+        showAgentSelect
+        sessionTitle={sessionTitle}
+      />
+      <div className="shot-body">
+        <ChatPane
+          locale={locale}
+          hostReady
+          sessionId="s1"
+          messages={messagesFor(locale)}
+          isRunning={false}
+          models={MODELS}
+          modelId="gpt-5.4"
+          showModelPicker
+          onSend={noop}
+          onEnqueue={noop}
+          onUpdateQueued={noop}
+          onDeleteQueued={noop}
+          onSendQueuedNow={noop}
+          onEditingQueued={noop}
+          onMoveQueued={noop}
+          shareActiveFile={false}
+          onShareActiveFile={noop}
+          onRevise={noop}
+          onCancel={noop}
+          onFork={noop}
+          onRegenerate={noop}
+          onPickAttachments={noopAsync}
+          onPasteImages={noopAsync}
+          onUploadFiles={noopAsync}
+          onAttachPaths={noopAsync}
+          onPreviewImage={async () => ""}
+          onModel={noop}
+          agentMode="ask"
+          onAgentMode={noop}
+          agentModes={[
+            { id: "agent", name: "Agent", kind: "agent" },
+            { id: "plan", name: "Plan", kind: "plan" },
+          ]}
+          agentModeId="agent"
+          onAgentModeId={noop}
+          iconOnly={false}
+          narrowModel={false}
+          flatActions={false}
+          skills={skills}
+          onRefreshSkills={noop}
+          queue={queue ?? []}
+        />
+      </div>
+    </div>
+  );
+}
+
 function PanelChat({
   skills,
   queue,
@@ -381,60 +450,7 @@ function PanelChat({
 }) {
   return (
     <Frame selected={false}>
-      <div className="shot-column">
-        <PanelHeader
-          status="ready"
-          agents={FOUND}
-          selectedProviderId="codex"
-          showAgentSelect
-          sessionTitle={sessionTitle}
-        />
-        <div className="shot-body">
-          <ChatPane
-            locale={locale}
-            hostReady
-            sessionId="s1"
-            messages={messagesFor(locale)}
-            isRunning={false}
-            models={MODELS}
-            modelId="gpt-5.4"
-            showModelPicker
-            onSend={noop}
-            onEnqueue={noop}
-            onUpdateQueued={noop}
-            onDeleteQueued={noop}
-            onSendQueuedNow={noop}
-            onEditingQueued={noop}
-            onMoveQueued={noop}
-            shareActiveFile={false}
-            onShareActiveFile={noop}
-            onRevise={noop}
-            onCancel={noop}
-            onFork={noop}
-            onRegenerate={noop}
-            onPickAttachments={noopAsync}
-            onPasteImages={noopAsync}
-            onUploadFiles={noopAsync}
-            onAttachPaths={noopAsync}
-            onPreviewImage={async () => ""}
-            onModel={noop}
-            agentMode="ask"
-            onAgentMode={noop}
-            agentModes={[
-              { id: "agent", name: "Agent", kind: "agent" },
-              { id: "plan", name: "Plan", kind: "plan" },
-            ]}
-            agentModeId="agent"
-            onAgentModeId={noop}
-            iconOnly={false}
-            narrowModel={false}
-            flatActions={false}
-            skills={skills}
-            onRefreshSkills={noop}
-            queue={queue ?? []}
-          />
-        </div>
-      </div>
+      <ChatBody skills={skills} queue={queue} sessionTitle={sessionTitle} />
     </Frame>
   );
 }
@@ -451,6 +467,39 @@ function QueueScene() {
     markReady();
   }, []);
   return <PanelChat skills={SKILLS} queue={QUEUE} sessionTitle={COPY[locale].title} />;
+}
+
+function ContinueScene() {
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setContainer(document.querySelector<HTMLElement>(".shot-panel"));
+    markReady();
+  }, []);
+  const prompt = buildHandoffPrompt({
+    locale,
+    target: "browser",
+    statePath: "/Users/you/.opensider-vscode/workspaces/opensider-vscode/ui-state.json",
+    sessionId: "session-01",
+    beforeRound: 3,
+    throughMessageId: "a2",
+    workspace: "/work/opensider-vscode",
+  });
+  return (
+    <Frame selected={false}>
+      <ChatBody skills={SKILLS} sessionTitle={COPY[locale].title} />
+      {container ? (
+        <ContinueDialog
+          locale={locale}
+          title={t(locale, "continueInBrowser")}
+          hint={t(locale, "continueReadyBrowser")}
+          prompt={prompt}
+          onOpenInstall={noop}
+          onClose={noop}
+          container={container}
+        />
+      ) : null}
+    </Frame>
+  );
 }
 
 const SHOT_CSS = `
@@ -524,6 +573,7 @@ const SHOT_CSS = `
   color: #6e6e6e;
 }
 .shot-panel {
+  position: relative;
   width: 560px;
   flex: none;
   background: var(--ink);
@@ -553,6 +603,8 @@ createRoot(document.getElementById("root")!).render(
     <ComposerScene />
   ) : scene === "queue" ? (
     <QueueScene />
+  ) : scene === "continue" ? (
+    <ContinueScene />
   ) : (
     <SetupScene agents={[]} />
   ),

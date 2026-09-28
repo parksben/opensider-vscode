@@ -16,11 +16,18 @@ export function ModalShell({
   locale,
   title,
   onClose,
+  container,
   children,
 }: {
   locale: Locale;
   title: string;
   onClose: () => void;
+  /**
+   * Where the overlay mounts. Defaults to `document.body` (the whole webview).
+   * The shots harness passes the emulated panel so the modal covers the panel,
+   * the way it does in VS Code, instead of the whole screenshot window.
+   */
+  container?: Element | null;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -36,7 +43,9 @@ export function ModalShell({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-[2px]"
+      className={`${
+        container ? "absolute" : "fixed"
+      } inset-0 z-[90] flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-[2px]`}
       onClick={onClose}
     >
       <div
@@ -59,6 +68,6 @@ export function ModalShell({
         {children}
       </div>
     </div>,
-    document.body,
+    container ?? document.body,
   );
 }

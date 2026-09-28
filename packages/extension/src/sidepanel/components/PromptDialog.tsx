@@ -21,6 +21,7 @@ export function PromptDialog({
   copyLabel,
   children,
   extra,
+  container,
   onClose,
 }: {
   locale: Locale;
@@ -32,6 +33,8 @@ export function PromptDialog({
   children?: ReactNode;
   /** 插在说明和提示词之间，例如「前往安装」按钮。 */
   extra?: ReactNode;
+  /** See `ModalShell`: the overlay mount point. */
+  container?: Element | null;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -48,7 +51,7 @@ export function PromptDialog({
   };
 
   return (
-    <ModalShell locale={locale} title={title} onClose={onClose}>
+    <ModalShell locale={locale} title={title} onClose={onClose} container={container}>
       <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto px-3 py-3">
         {children}
 

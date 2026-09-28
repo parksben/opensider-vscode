@@ -13,6 +13,7 @@ export function ContinueDialog({
   hint,
   prompt,
   installUrl,
+  container,
   onOpenInstall,
   onClose,
 }: {
@@ -22,6 +23,8 @@ export function ContinueDialog({
   prompt: string;
   /** Set when the other app was not found (or could not be checked). */
   installUrl?: string;
+  /** See `ModalShell`: the overlay mount point. */
+  container?: Element | null;
   onOpenInstall: (url: string) => void;
   onClose: () => void;
 }) {
@@ -32,6 +35,7 @@ export function ContinueDialog({
       hint={hint}
       prompt={prompt}
       copyLabel={t(locale, "copyContinuePrompt")}
+      container={container}
       onClose={onClose}
       extra={
         installUrl ? (
