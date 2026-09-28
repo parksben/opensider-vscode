@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { clampSessionDrawerWidth, isPlaceholderTitle, SESSION_DRAWER_MAX, SESSION_DRAWER_MIN, type Session } from "../persist";
 import { groupSessions, type SessionGroupId } from "../session-groups";
 import type { ThemePreference } from "../theme";
+import { releaseCheckLabelKey, type ReleaseCheckState } from "../version";
 import { ConfirmPopover } from "./ConfirmPopover";
 import { IconButton } from "./IconButton";
 import { RippleButton } from "./RippleButton";
@@ -67,6 +68,10 @@ export function SessionDrawer({
   onClose,
   onLocale,
   onTheme,
+  versions,
+  checkState,
+  onCheckUpdate,
+  onShowUninstall,
 }: {
   locale: Locale;
   theme: ThemePreference;
@@ -83,6 +88,12 @@ export function SessionDrawer({
   onClose: () => void;
   onLocale: (locale: Locale) => void;
   onTheme: (theme: ThemePreference) => void;
+  /** Extension, host and latest release versions (unknown ones are omitted). */
+  versions: { extension: string; host?: string; latest?: string };
+  /** Manual "check for updates" feedback. */
+  checkState: ReleaseCheckState;
+  onCheckUpdate: () => void;
+  onShowUninstall: () => void;
 }) {
   const label = (key: MessageKey) => t(locale, key);
   const [tab, setTab] = useState<DrawerTab>("sessions");
@@ -331,6 +342,13 @@ export function SessionDrawer({
             ]}
             onChange={onLocale}
           />
+          <VersionPanel
+            label={label}
+            versions={versions}
+            checkState={checkState}
+            onCheckUpdate={onCheckUpdate}
+            onShowUninstall={onShowUninstall}
+          />
         </div>
       ) : (
         <>
@@ -525,6 +543,51 @@ export function SessionDrawer({
         }}
       />
     </aside>
+  );
+}
+
+function VersionPanel({
+  label,
+  versions,
+  checkState,
+  onCheckUpdate,
+  onShowUninstall,
+}: {
+  label: (key: MessageKey) => string;
+  versions: { extension: string; host?: string; latest?: string };
+  checkState: ReleaseCheckState;
+  onCheckUpdate: () => void;
+  onShowUninstall: () => void;
+}) {
+  const unknown = label("versionUnknown");
+  const feedback = checkState === "current" || checkState === "failed";
+  const buttonClass =
+    "rounded-md border border-[var(--line)] px-2.5 py-1.5 text-center text-[12px] text-[var(--text)] hover:bg-[var(--hover)]";
+
+  return (
+    <div className="mt-1 flex flex-col gap-1.5 rounded-lg border border-[var(--line)] px-2.5 py-2.5">
+      <span className="text-[12px] text-[var(--muted)]">{label("settingVersions")}</span>
+      <VersionRow name={label("versionExtension")} value={versions.extension || unknown} />
+      <VersionRow name={label("versionHost")} value={versions.host || unknown} />
+      <VersionRow name={label("versionLatest")} value={versions.latest || unknown} />
+      <RippleButton onClick={onCheckUpdate} className={`mt-1 ${buttonClass}`}>
+        <span className={feedback ? (checkState === "failed" ? "text-[var(--bad)]" : "text-[var(--ok)]") : ""}>
+          {label(releaseCheckLabelKey(checkState))}
+        </span>
+      </RippleButton>
+      <RippleButton onClick={onShowUninstall} className={buttonClass}>
+        {label("uninstallAction")}
+      </RippleButton>
+    </div>
+  );
+}
+
+function VersionRow({ name, value }: { name: string; value: string }) {
+  return (
+    <span className="flex items-center gap-2 text-[12px]">
+      <span className="shrink-0 text-[var(--muted)]">{name}</span>
+      <span className="min-w-0 flex-1 truncate text-right text-[var(--text)]">{value}</span>
+    </span>
   );
 }
 

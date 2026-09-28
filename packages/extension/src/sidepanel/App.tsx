@@ -26,6 +26,7 @@ import { ChatPane } from "./components/ChatPane";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Header } from "./components/Header";
 import { UpdateDialog } from "./components/UpdateDialog";
+import { UninstallDialog } from "./components/UninstallDialog";
 import { COMPACT_MAIN_PX, COMPOSER_ACTION_FLAT_PX, ICON_ONLY_MAIN_PX, MODEL_NARROW_MAIN_PX } from "./layout";
 import { PermissionBar } from "./components/PermissionBar";
 import { SessionDrawer } from "./components/SessionDrawer";
@@ -41,7 +42,7 @@ import {
   type ThemePreference,
 } from "./theme";
 import type { QueuedMessage } from "./queued-message";
-import { displayVersion, isNewer } from "./version";
+import { displayVersion, isNewer, type ReleaseCheckState } from "./version";
 import {
   buildForkContext,
   applyProviderBinding,
@@ -74,6 +75,10 @@ import {
 /** How long the bridge may take to answer a file upload before we call it silent. */
 const HOST_FILE_TIMEOUT_MS = 20_000;
 const EXTENSION_VERSION = window.__opensiderExtensionVersion ?? "";
+/** How long "Up to date" / "Check failed" stays on the settings button. */
+const CHECK_FEEDBACK_MS = 1500;
+/** A manual check the host never answers (offline) flips to failure after this. */
+const CHECK_WATCHDOG_MS = 8000;
 
 export function App() {
   const [hydrated, setHydrated] = useState(false);
@@ -111,6 +116,11 @@ export function App() {
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [release, setRelease] = useState<{ version: string; latest: string }>();
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [uninstallOpen, setUninstallOpen] = useState(false);
+  const [checkState, setCheckState] = useState<ReleaseCheckState>("idle");
+  const checkPendingRef = useRef(false);
+  const checkWatchdogRef = useRef(0);
+  const checkResetRef = useRef(0);
   const [drawerWidth, setDrawerWidth] = useState(SESSION_DRAWER_DEFAULT);
   const [compact, setCompact] = useState(false);
   // 两个下拉（模式 / 权限）是否已收成纯图标。与 compact 分开：下拉该早收，其余布局不必跟着早改版。
@@ -619,6 +629,28 @@ export function App() {
     for (const id of [...runningIdsRef.current]) finishTurn(id);
   };
 
+  // The visible result of a manual "check for updates": checking → a newer version opens the
+  // dialog, otherwise flash "up to date"; if the host never answers (offline), flash failure.
+  // Only stable setters and refs, so the message handler can call it from an old closure.
+  const flashCheckState = (state: "current" | "failed") => {
+    setCheckState(state);
+    window.clearTimeout(checkResetRef.current);
+    checkResetRef.current = window.setTimeout(() => setCheckState("idle"), CHECK_FEEDBACK_MS);
+  };
+
+  const runCheckUpdate = () => {
+    if (checkPendingRef.current) return;
+    checkPendingRef.current = true;
+    setCheckState("checking");
+    sendRef.current({ type: "release.check" });
+    window.clearTimeout(checkWatchdogRef.current);
+    checkWatchdogRef.current = window.setTimeout(() => {
+      if (!checkPendingRef.current) return;
+      checkPendingRef.current = false;
+      flashCheckState("failed");
+    }, CHECK_WATCHDOG_MS);
+  };
+
   const handleHost = (msg: HostToExt) => {
     if (msg.type === "skills") {
       setSkills(msg.items);
@@ -654,6 +686,18 @@ export function App() {
       };
       setRelease(next);
       const newer = isNewer(next.latest, EXTENSION_VERSION) || isNewer(next.latest, next.version);
+      // A manual "check for updates" is waiting on exactly this reply.
+      if (checkPendingRef.current) {
+        checkPendingRef.current = false;
+        window.clearTimeout(checkWatchdogRef.current);
+        if (newer) {
+          setCheckState("idle");
+          setUpdateOpen(true);
+        } else {
+          flashCheckState("current");
+        }
+        return;
+      }
       if (msg.announce && newer) setUpdateOpen(true);
       return;
     }
@@ -1850,6 +1894,14 @@ export function App() {
             applyThemePreference(next);
             setTheme(next);
           }}
+          versions={{
+            extension: displayVersion(EXTENSION_VERSION) ?? EXTENSION_VERSION,
+            host: displayVersion(release?.version),
+            latest: displayVersion(release?.latest),
+          }}
+          checkState={checkState}
+          onCheckUpdate={runCheckUpdate}
+          onShowUninstall={() => setUninstallOpen(true)}
         />
       ) : null}
       {agentSwitch ? (
@@ -1876,6 +1928,9 @@ export function App() {
           }}
           onClose={() => setUpdateOpen(false)}
         />
+      ) : null}
+      {uninstallOpen ? (
+        <UninstallDialog locale={locale} onClose={() => setUninstallOpen(false)} />
       ) : null}
     </div>
   );

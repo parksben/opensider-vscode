@@ -34,3 +34,28 @@ export function displayVersion(value: string | undefined): string | undefined {
   const text = (value ?? "").trim().replace(/^v/i, "");
   return text || undefined;
 }
+
+/**
+ * The visible state of a manual "check for updates" click.
+ *
+ * `checking` waits for the host; `current` / `failed` are short-lived feedback (the caller
+ * resets to `idle`). A newer version found does not go through here — the update dialog
+ * opens instead.
+ */
+export type ReleaseCheckState = "idle" | "checking" | "current" | "failed";
+
+/** Button label for a check state, used by the settings tab. */
+export function releaseCheckLabelKey(
+  state: ReleaseCheckState,
+): "checkUpdate" | "checkingUpdate" | "checkUpdateCurrent" | "checkUpdateFailed" {
+  switch (state) {
+    case "checking":
+      return "checkingUpdate";
+    case "current":
+      return "checkUpdateCurrent";
+    case "failed":
+      return "checkUpdateFailed";
+    default:
+      return "checkUpdate";
+  }
+}
