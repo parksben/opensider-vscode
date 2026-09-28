@@ -78,8 +78,11 @@ test("handoff prompt points at the session file and stops before the next round"
   });
   assert.match(prompt, /浏览器端 OpenSider/);
   assert.match(prompt, /\/tmp\/sessions\/sess\.json/);
+  assert.match(prompt, /不在 ui-state\.json/);
+  assert.match(prompt, /type 为 text/);
   assert.match(prompt, /只看第 2 轮之前/);
   assert.match(prompt, /sess/);
+  assert.doesNotMatch(prompt, /在 sessions 里找/);
   assert.doesNotMatch(prompt, /User: /);
 });
 
