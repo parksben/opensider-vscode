@@ -38,6 +38,8 @@ declare const chrome: {
  */
 interface Window {
   __opensiderWorkspace?: { key: string; name: string };
+  /** package.json version, baked in by panelHtml. */
+  __opensiderExtensionVersion?: string;
 }
 
 declare module "*.svg?url" {

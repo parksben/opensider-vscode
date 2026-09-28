@@ -4,7 +4,7 @@
 
 ## 0.1.0
 
-First release on the Visual Studio Marketplace.
+First release, published from GitHub Releases. Not listed on the Marketplace.
 
 - Side-panel chat with a local ACP agent CLI (Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and others).
 - Setup screen when no agent CLI is installed yet, with a prompt that points at the bundled skill.

@@ -20,6 +20,7 @@ import (
 	"opensidervscode/internal/native"
 	"opensidervscode/internal/paths"
 	"opensidervscode/internal/protocol"
+	"opensidervscode/internal/release"
 	"opensidervscode/internal/sessioncfg"
 	"opensidervscode/internal/skills"
 	"opensidervscode/internal/uistate"
@@ -119,6 +120,37 @@ func Run() {
 func (h *Host) main() {
 	h.setHostState("starting", "")
 	go h.scanAndIdle()
+	go h.pollRelease()
+}
+
+// pollRelease asks GitHub every half hour. The panel's own load sends
+// release.check with announce set; these ticks only refresh the header button.
+// A failed lookup is logged and not forwarded — the panel must not change.
+func (h *Host) pollRelease() {
+	ticker := time.NewTicker(30 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		h.checkRelease(false)
+	}
+}
+
+func (h *Host) checkRelease(announce bool) {
+	info, err := release.Latest(8 * time.Second)
+	if err != nil {
+		log.Log("release check failed: " + err.Error())
+		return
+	}
+	log.Log("release latest=" + info.Tag)
+	msg := map[string]any{
+		"type":      "release",
+		"version":   version.Display(),
+		"latest":    info.Tag,
+		"checkedAt": info.CheckedAt,
+	}
+	if announce {
+		msg["announce"] = true
+	}
+	h.send(msg)
 }
 
 func (h *Host) scanAndIdle() {
@@ -894,6 +926,10 @@ func (h *Host) dispatch(typ string, msg map[string]any) error {
 		return h.setWorkspace(str(msg["cwd"]), str(msg["key"]), str(msg["name"]))
 	case "window.set":
 		h.rememberEditorWindow(msg["window"])
+		return nil
+	case "release.check":
+		announce, _ := msg["announce"].(bool)
+		go h.checkRelease(announce)
 		return nil
 	case "hello":
 		h.sendHello()

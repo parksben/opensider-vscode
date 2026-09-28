@@ -40,13 +40,21 @@
 
 ## 安装
 
-在扩展视图里搜索 **OpenSider for VSCode**，或在终端执行：
+从 [GitHub Releases](https://github.com/parksben/opensider-vscode/releases) 下载和本机平台对应的 `.vsix`。不上架扩展市场。
 
 ```sh
-code --install-extension opensider.opensider-vscode
+code --install-extension opensider-vscode-darwin-arm64.vsix --force
+```
+
+文件名里的平台是 `darwin-arm64`、`darwin-x64`、`linux-x64`、`linux-arm64`、`win32-x64`、`win32-arm64` 之一。Cursor 用同一份包：
+
+```sh
+cursor --install-extension opensider-vscode-darwin-arm64.vsix --force
 ```
 
 装完执行一次 **Developer: Reload Window**。活动栏会出现 OpenSider 图标。首次打开时面板会移到右侧辅助栏，和 Copilot Chat 并列；之后你把它拖到哪里，它就留在哪里。
+
+有更新的 Release 时，侧栏右上角会出现更新按钮；每次打开面板还会直接弹出更新提示。提示词交给你自己的 Agent 去装，插件本身不下载安装包。
 
 从源码打包：
 

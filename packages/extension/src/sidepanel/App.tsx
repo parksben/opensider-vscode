@@ -25,6 +25,7 @@ import { AgentSetup } from "./components/AgentSetup";
 import { ChatPane } from "./components/ChatPane";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Header } from "./components/Header";
+import { UpdateDialog } from "./components/UpdateDialog";
 import { COMPACT_MAIN_PX, COMPOSER_ACTION_FLAT_PX, ICON_ONLY_MAIN_PX, MODEL_NARROW_MAIN_PX } from "./layout";
 import { PermissionBar } from "./components/PermissionBar";
 import { SessionDrawer } from "./components/SessionDrawer";
@@ -40,6 +41,7 @@ import {
   type ThemePreference,
 } from "./theme";
 import type { QueuedMessage } from "./queued-message";
+import { displayVersion, isNewer } from "./version";
 import {
   buildForkContext,
   applyProviderBinding,
@@ -71,6 +73,7 @@ import {
 
 /** How long the bridge may take to answer a file upload before we call it silent. */
 const HOST_FILE_TIMEOUT_MS = 20_000;
+const EXTENSION_VERSION = window.__opensiderExtensionVersion ?? "";
 
 export function App() {
   const [hydrated, setHydrated] = useState(false);
@@ -106,6 +109,8 @@ export function App() {
   const [sawAgents, setSawAgents] = useState(false);
   const [progress, setProgress] = useState<AgentProgress>();
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [release, setRelease] = useState<{ version: string; latest: string }>();
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [drawerWidth, setDrawerWidth] = useState(SESSION_DRAWER_DEFAULT);
   const [compact, setCompact] = useState(false);
   // 两个下拉（模式 / 权限）是否已收成纯图标。与 compact 分开：下拉该早收，其余布局不必跟着早改版。
@@ -642,6 +647,16 @@ export function App() {
       sendRef.current({ type: "skills.refresh" });
       return;
     }
+    if (msg.type === "release") {
+      const next = {
+        version: typeof msg.version === "string" ? msg.version : "",
+        latest: typeof msg.latest === "string" ? msg.latest : "",
+      };
+      setRelease(next);
+      const newer = isNewer(next.latest, EXTENSION_VERSION) || isNewer(next.latest, next.version);
+      if (msg.announce && newer) setUpdateOpen(true);
+      return;
+    }
     if (msg.type === "ui.state") {
       if (!("state" in msg)) {
         // 分片形态由 SW 重组后才转发（background.ts）；真漏过来的碎片直接忽略。
@@ -1067,6 +1082,8 @@ export function App() {
     const { send, reconnect, disconnect } = connectSidebar((msg) => handleHostRef.current(msg));
     sendRef.current = send;
     reconnectRef.current = reconnect;
+    // UI 每次加载先查一次。有新版本才弹窗；限频或失败时宿主不回这条，界面保持原样。
+    send({ type: "release.check", announce: true });
     return () => {
       sendRef.current = () => undefined;
       reconnectRef.current = () => undefined;
@@ -1620,6 +1637,10 @@ export function App() {
           compact={compact}
           sessionTitle={selected.title}
           sessionsOpen={sessionsOpen}
+          updateAvailable={
+            isNewer(release?.latest, EXTENSION_VERSION) || isNewer(release?.latest, release?.version)
+          }
+          onShowUpdate={() => setUpdateOpen(true)}
           onSelectAgent={pickAgent}
           onCancelConnect={cancelConnect}
           onToggleSessions={() => setSessionsOpen((open) => !open)}
@@ -1812,7 +1833,6 @@ export function App() {
           }}
         />
       ) : null}
-      {/* 切换 Agent 前的高危确认：跑着的任务会被打断，先问一句（文案见 i18n）。 */}
       {agentSwitch ? (
         <ConfirmDialog
           locale={locale}
@@ -1825,6 +1845,17 @@ export function App() {
           confirmLabel={t(locale, "switchAgentConfirm")}
           onCancel={() => setAgentSwitch(undefined)}
           onConfirm={confirmAgentSwitch}
+        />
+      ) : null}
+      {updateOpen ? (
+        <UpdateDialog
+          locale={locale}
+          versions={{
+            extension: displayVersion(EXTENSION_VERSION) ?? EXTENSION_VERSION,
+            host: displayVersion(release?.version),
+            latest: displayVersion(release?.latest),
+          }}
+          onClose={() => setUpdateOpen(false)}
         />
       ) : null}
     </div>

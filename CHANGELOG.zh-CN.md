@@ -4,7 +4,7 @@
 
 ## 0.1.0
 
-Visual Studio Marketplace 上的第一个版本。
+第一个版本，通过 GitHub Releases 发布，不上架扩展市场。
 
 - 在侧栏里用本机 ACP Agent CLI 对话（Claude Code、Codex、Cursor、OpenCode、GitHub Copilot CLI 等）。
 - 还没有可用 Agent CLI 时显示引导页，提示词指向扩展内置的 skill。

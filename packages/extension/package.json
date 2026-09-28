@@ -28,7 +28,6 @@
     "copilot",
     "chat"
   ],
-  "qna": "marketplace",
   "engines": {
     "vscode": "^1.85.0"
   },

@@ -252,6 +252,12 @@ export type CodeAttachment = {
 export type ExtToHost =
   | { type: "hello" }
   /**
+   * Ask the host to read the latest GitHub Release.
+   * `announce` is the panel's first check after it loads: a newer tag should open the
+   * update dialog. Later polls omit it and only refresh the header button.
+   */
+  | { type: "release.check"; announce?: boolean }
+  /**
    * `cwd` is where an ACP session runs and follows the active editor in a multi-root
    * workspace. `key` is the window's stable identity and is what persisted state is
    * filed under, so history does not move when the user switches roots.
@@ -329,6 +335,7 @@ export type FsPickMode = "mixed" | "files" | "folders";
 
 export type HostToExt =
   | { type: "hello"; workspace: string; agentPath: string; providerId?: string; version?: string }
+  | { type: "release"; version?: string; latest?: string; checkedAt?: string; announce?: boolean }
   | { type: "ui.state"; state: Record<string, unknown> | null }
   | { type: "ui.state"; index: number; total: number; data: string }
   | { type: "status"; state: HostStatusState; error?: string }

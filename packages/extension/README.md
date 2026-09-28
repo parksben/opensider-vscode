@@ -40,13 +40,21 @@ Select code in the editor and a chip with the file name and line range appears a
 
 ## Install
 
-Search for **OpenSider for VSCode** in the Extensions view, or:
+Download the `.vsix` for your platform from the [GitHub releases](https://github.com/parksben/opensider-vscode/releases). There is no Marketplace listing.
 
 ```sh
-code --install-extension opensider.opensider-vscode
+code --install-extension opensider-vscode-darwin-arm64.vsix --force
+```
+
+Use the asset that matches this machine (`darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `win32-x64`, `win32-arm64`). Cursor takes the same file:
+
+```sh
+cursor --install-extension opensider-vscode-darwin-arm64.vsix --force
 ```
 
 Then run **Developer: Reload Window**. An OpenSider icon appears in the activity bar. The first time you open it, the panel moves to the secondary side bar, next to Copilot Chat. After that it stays wherever you drag it.
+
+When a newer release exists, the panel shows an update button and, on each load, the update dialog. That dialog is a prompt for your own agent. It does not download the package by itself.
 
 From source:
 

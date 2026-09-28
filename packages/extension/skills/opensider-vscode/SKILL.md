@@ -5,6 +5,9 @@ description: Set up a local ACP agent CLI so the OpenSider for VSCode sidebar ca
 
 # Set up an ACP agent for OpenSider for VSCode
 
+If the user asked to update or reinstall the OpenSider for VSCode extension itself,
+stop and follow [update.md](./update.md). The steps below install an agent CLI, not the extension.
+
 The OpenSider sidebar in VS Code is an ACP client. It does not ship any model or
 account: it starts an agent CLI that is already installed and signed in on this
 machine, and talks to it over the Agent Client Protocol on stdio.

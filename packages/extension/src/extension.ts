@@ -39,7 +39,7 @@ function homeDir(): string {
   return path.join(homedir(), ".opensider-vscode");
 }
 
-function panelHtml(webview: vscode.Webview, extensionPath: string): string {
+function panelHtml(webview: vscode.Webview, extensionPath: string, version: string): string {
   const dist = path.join(extensionPath, "dist", "panel");
   let html = readFileSync(path.join(dist, "index.html"), "utf8");
   const nonce = Math.random().toString(36).slice(2);
@@ -48,6 +48,7 @@ function panelHtml(webview: vscode.Webview, extensionPath: string): string {
   // arrive a frame or two late and the panel would briefly read another project's
   // chats, so it is baked into the document instead.
   const boot = JSON.stringify(workspaceIdentity()).replace(/</g, "\\u003c");
+  const extensionVersion = JSON.stringify(version).replace(/</g, "\\u003c");
   html = html.replace(/(src|href)="([^"]+)"/g, (full, attr: string, url: string) => {
     if (/^(https?:|data:)/.test(url)) return full;
     const file = path.join(dist, url.replace(/^\.\//, ""));
@@ -64,7 +65,7 @@ function panelHtml(webview: vscode.Webview, extensionPath: string): string {
   return html.replace(
     "</head>",
     `<meta http-equiv="Content-Security-Policy" content="${csp}">\n` +
-      `<script nonce="${nonce}">window.__opensiderWorkspace=${boot};</script>\n</head>`,
+      `<script nonce="${nonce}">window.__opensiderWorkspace=${boot};window.__opensiderExtensionVersion=${extensionVersion};</script>\n</head>`,
   );
 }
 
@@ -105,7 +106,11 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist")],
     };
-    view.webview.html = panelHtml(view.webview, this.context.extensionPath);
+    view.webview.html = panelHtml(
+      view.webview,
+      this.context.extensionPath,
+      String(this.context.extension.packageJSON.version ?? ""),
+    );
     view.webview.onDidReceiveMessage((message: WebviewMessage) => this.onWebview(message));
     view.onDidDispose(() => {
       if (this.view === view) this.view = undefined;
@@ -482,6 +487,10 @@ async function installSkill(context: vscode.ExtensionContext): Promise<void> {
     await copyFile(
       path.join(context.extensionPath, "skills", "opensider-vscode", "SKILL.md"),
       path.join(target, "SKILL.md"),
+    );
+    await copyFile(
+      path.join(context.extensionPath, "skills", "opensider-vscode", "update.md"),
+      path.join(target, "update.md"),
     );
   } catch {
     // The sidebar still shows the prompt; a missing copy only costs the agent one read.

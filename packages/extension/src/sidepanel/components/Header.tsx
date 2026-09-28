@@ -1,5 +1,5 @@
 import type { AgentInfo, AgentProgress, HostStatusState } from "@shared";
-import { ChevronsLeft, ChevronsRight, CircleArrowUp, RotateCw, Unplug } from "lucide-react";
+import { CircleArrowUp, RotateCw, Unplug } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { Locale } from "../i18n";
 import { t } from "../i18n";
@@ -19,6 +19,19 @@ const PHASE_KEYS = {
 
 const TITLE_GAP = 32;
 
+/** VS Code's secondary-sidebar toggle: layout-sidebar-right / layout-sidebar-right-off. */
+function SideBarToggleIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      {open ? (
+        <path d="M12.5 1C13.881 1 15 2.119 15 3.5V12.5C15 13.881 13.881 15 12.5 15H3.5C2.119 15 1 13.881 1 12.5V3.5C1 2.119 2.119 1 3.5 1H12.5ZM9 14V2H3.5C2.672 2 2 2.672 2 3.5V12.5C2 13.328 2.672 14 3.5 14H9Z" />
+      ) : (
+        <path d="M12.5 1H3.5C2.122 1 1 2.122 1 3.5V12.5C1 13.879 2.122 15 3.5 15H12.5C13.878 15 15 13.879 15 12.5V3.5C15 2.122 13.878 1 12.5 1ZM2 12.5V3.5C2 2.673 2.673 2 3.5 2H9V14H3.5C2.673 14 2 13.327 2 12.5ZM14 12.5C14 13.327 13.327 14 12.5 14H10V2H12.5C13.327 2 14 2.673 14 3.5V12.5Z" />
+      )}
+    </svg>
+  );
+}
+
 export function Header({
   locale,
   status,
@@ -30,9 +43,11 @@ export function Header({
   compact,
   sessionTitle,
   sessionsOpen,
+  updateAvailable,
   onRetry,
   onCancelConnect,
   onToggleSessions,
+  onShowUpdate,
   onSelectAgent,
 }: {
   locale: Locale;
@@ -45,9 +60,11 @@ export function Header({
   compact?: boolean;
   sessionTitle: string;
   sessionsOpen: boolean;
+  updateAvailable?: boolean;
   onRetry?: () => void;
   onCancelConnect?: () => void;
   onToggleSessions: () => void;
+  onShowUpdate?: () => void;
   onSelectAgent: (id: string) => void;
 }) {
   const label = (key: Parameters<typeof t>[1]) => t(locale, key);
@@ -85,7 +102,7 @@ export function Header({
     observer.observe(left);
     observer.observe(right);
     return () => observer.disconnect();
-  }, [compact, showAgentSelect, status, agents.length, selectedProviderId, error, sessionsOpen]);
+  }, [compact, showAgentSelect, status, agents.length, selectedProviderId, error, sessionsOpen, updateAvailable]);
 
   const titleCluster = (align: "left" | "center") => (
     <div
@@ -134,9 +151,20 @@ export function Header({
       aria-expanded={sessionsOpen}
       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--line)] text-[var(--text)]"
     >
-      {sessionsOpen ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
+      {sessionsOpen ? <SideBarToggleIcon open /> : <SideBarToggleIcon open={false} />}
     </IconButton>
   );
+
+  const updateButton = updateAvailable ? (
+    <IconButton
+      label={label("updateDialogTitle")}
+      onClick={onShowUpdate}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--line)] text-[var(--brass)]"
+    >
+      <CircleArrowUp size={14} />
+      <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--brass)]" />
+    </IconButton>
+  ) : null;
 
 
   return (
@@ -149,6 +177,7 @@ export function Header({
             {titleCluster("left")}
           </div>
           <div className="flex shrink-0 items-center justify-end gap-1.5">
+            {updateButton}
             {drawerButton}
           </div>
         </div>
@@ -174,6 +203,7 @@ export function Header({
             <div className="flex w-full min-w-0 items-center justify-center">{titleCluster("center")}</div>
           </div>
           <div ref={rightRef} className="flex shrink-0 items-center justify-end gap-1.5">
+            {updateButton}
             {drawerButton}
           </div>
         </div>

@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            target: darwin-arm64
+            bin: opensider-vscode-host
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            target: darwin-x64
+            bin: opensider-vscode-host
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            target: linux-x64
+            bin: opensider-vscode-host
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            target: linux-arm64
+            bin: opensider-vscode-host
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            target: win32-x64
+            bin: opensider-vscode-host.exe
+          - os: windows-latest
+            goos: windows
+            goarch: arm64
+            target: win32-arm64
+            bin: opensider-vscode-host.exe
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ">=1.23"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/extension/package-lock.json
+
+      - name: Build host
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          mkdir -p packages/extension/bin
+          ldflags="-X opensidervscode/internal/version.Version=${GITHUB_REF_NAME}"
+          go build -ldflags "$ldflags" -o "packages/extension/bin/${{ matrix.bin }}" ./cmd/opensider-vscode-host
+          if [[ "${{ matrix.goos }}" != "windows" ]]; then
+            chmod +x "packages/extension/bin/${{ matrix.bin }}"
+          fi
+
+      - name: Build extension
+        working-directory: packages/extension
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          version=$(node -p "require('./package.json').version")
+          test "$version" = "${GITHUB_REF_NAME#v}" || {
+            echo "extension version $version does not match tag ${GITHUB_REF_NAME}"
+            exit 1
+          }
+          npx vsce package --allow-missing-repository --target "${{ matrix.target }}" --out "../opensider-vscode-${{ matrix.target }}.vsix"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.target }}
+          path: opensider-vscode-${{ matrix.target }}.vsix
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: vsix-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(artifacts/opensider-vscode-*.vsix)
+          test "${#assets[@]}" -ge 6
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            "${assets[@]}"

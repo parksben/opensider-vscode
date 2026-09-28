@@ -7,3 +7,5 @@ node_modules/**
 package-lock.json
 **/*.map
 .gitignore
+# README screenshots stay in the repo for the docs. They are not part of the extension.
+media/readme/**
