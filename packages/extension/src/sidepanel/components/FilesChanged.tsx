@@ -60,7 +60,7 @@ export function FilesChanged({
         )}
       </RippleButton>
       {open ? (
-        <ul className="border-t border-[var(--line)]">
+        <ul className="cs-list-cap border-t border-[var(--line)]">
           {files.map((file) => {
             const Icon = changeIcon(file.change);
             const gone = file.change === "deleted";

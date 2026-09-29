@@ -492,6 +492,13 @@ textarea,
   overflow-y: auto;
 }
 
+/* 输入框上方那些列表（todos / changed files / queue / artifacts）：条目数由一轮 Agent
+   的工作量决定，可能几十上百条。封顶到面板高度的 30%，超出在列表内滚动，别把消息区挤没。 */
+.cs-list-cap {
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
 /* Beat VS Code webview @layer vscode-default `code` chrome (preformat bg + radius). */
 .cs-terminal-command {
   background: transparent;
