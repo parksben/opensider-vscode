@@ -9,3 +9,5 @@ package-lock.json
 .gitignore
 # README screenshots stay in the repo for the docs. They are not part of the extension.
 media/readme/**
+# ...except the banner the packaged README itself renders.
+!media/readme/banner.png
