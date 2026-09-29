@@ -17,8 +17,18 @@ function codeText(node: ReactNode): string {
 export const Markdown = memo(
   function Markdown({ text }: { text: string }) {
     const onLink = (event: MouseEvent<HTMLAnchorElement>, href?: string) => {
+      const target = (href ?? "").trim();
+      if (!target) return;
+      // The VS Code webview installs its own click listener on the content
+      // window (handleInnerClick). When it also runs, it opens the target
+      // through the workbench opener with `fromWorkspace: true`, which skips
+      // the confirmation for trusted workspaces. The link then opened while the
+      // extension host's confirmation dialog was still up, so "Cancel" could
+      // not stop it. stopPropagation keeps only the host path, which shows
+      // VS Code's dialog for external links.
       event.preventDefault();
-      openAgentLink(href ?? "");
+      event.stopPropagation();
+      openAgentLink(target);
     };
 
     return (
