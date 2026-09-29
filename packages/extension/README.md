@@ -2,7 +2,7 @@
   <br />
   <img alt="OpenSider" src="media/readme/banner.svg" />
   <p>
-    Seamlessly use multiple agents in VS Code
+    Use multiple agent CLIs in VS Code
   </p>
   <p>
     <a href="https://github.com/parksben/opensider-vscode/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/parksben/opensider-vscode?label=RELEASE" /></a>
@@ -14,25 +14,25 @@
   English | <a href="https://github.com/parksben/opensider-vscode/blob/main/README.zh-CN.md">中文</a>
 </div>
 
-OpenSider for VS Code integrates the Agent CLIs you already have — Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other [ACP](https://agentclientprotocol.com) agents — into the VS Code side bar Chat panel in one step, so you can use any of them seamlessly within the same project. It is the VS Code edition of the [OpenSider](https://github.com/parksben/opensider) browser extension: the same GUI and ACP engine architecture, and a drop-in alternative to GitHub Copilot Chat.
+**OpenSider for VS Code** brings the agent CLIs you already have (Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other [ACP](https://agentclientprotocol.com) agents) into the VS Code side bar Chat panel, so you can use any of them in the same project. It is the VS Code edition of the [OpenSider](https://github.com/parksben/opensider) browser extension, with the same GUI and the same ACP engine, and works as an alternative to GitHub Copilot Chat.
 
 ## Highlights
 
-- **Any ACP agent.** Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other CLIs from the ACP Registry; the model list comes from the agent.
-- **One session, any agent or model.** A session is not tied to one CLI — switch to another agent or model and carry on in the same session.
-- **Continue the same chat in the browser.** A conversation need not stay in the editor: hit **Continue in browser** on any reply and it hands the browser OpenSider a prompt carrying the conversation so far — and the browser side can hand a session back to VS Code the same way.
+- **Any ACP agent.** Claude Code, Codex, Cursor, OpenCode, GitHub Copilot CLI, and other CLIs from the ACP Registry. The model list comes from the agent.
+- **One session, any agent or model.** Start with one agent, switch to another mid-session, and keep the same conversation.
+- **Continue the same chat in the browser.** Hit **Continue in browser** on any reply and OpenSider turns the conversation into a prompt for the browser extension. A session can come back from the browser to VS Code the same way.
 
 ## Demo
 
 ### A workspace chat
 
-Reads, writes, and commands resolve against the open folder. A selection becomes an attachment chip above the composer, commands become terminal cards, and the files a turn writes collapse into a change list. The ring beside the model name is the context usage the agent reports — no report, no ring.
+Reads, edits and shell commands run against the folder you have open. A selection becomes an attachment chip above the composer, a command becomes a terminal card, and the files a turn writes collect into a change list. A ring next to the model name shows the context the agent reports.
 
 ![Workspace chat with a selection chip, a terminal card, and the changed-file list](media/readme/en/workspace-chat.png)
 
 ### Any ACP agent
 
-Connect to whatever this machine has installed, not a fixed catalog, and switch agent or model at any time.
+Connect to whatever this machine has installed. You can switch agent or model at any time.
 
 ![Click an Agent to connect](media/readme/en/pick-agent.png)
 
@@ -46,17 +46,17 @@ Type `/` to list the skills installed on this machine and put one at the caret. 
 
 ### Continue in the browser
 
-Halfway through in VS Code, hit **Continue in browser** on a reply and it packs the conversation into a prompt. Paste it into the browser OpenSider and the agent picks up from where this left off. The browser side hands a session back to VS Code the same way.
+Halfway through a task in VS Code, hit **Continue in browser** on a reply. OpenSider turns the conversation into a prompt; paste it into the browser extension and the agent continues from there. A session can go back to VS Code the same way.
 
 ![The prompt generated after clicking Continue in browser in VS Code](media/readme/en/continue-browser.png)
 
 ## Install & Use
 
-> This extension is for VS Code. Before installing, make sure you already have a running Agent CLI program on your machine.
+> This extension is for VS Code. Before installing, make sure you have an agent CLI set up on this machine.
 
 ### 1. Install
 
-One-step install: paste the prompt below into the local AI Agent you already use (Claude Code, Codex, Cursor, OpenCode, …). It downloads the `.vsix` for this machine, installs it, and sets up an agent CLI.
+Paste the prompt below into the local agent you already use. It downloads the `.vsix` for this machine, installs it, and sets up an agent CLI.
 
 ```
 Install the OpenSider for VSCode extension for me.
@@ -65,7 +65,7 @@ Read https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/e
 
 ### 2. Update
 
-One-step update: when the panel tells you a new version is available, copy the prompt below to your local Agent and let it guide you through the update.
+When the panel reports a new version, copy the prompt below to your local agent and it will guide the update.
 
 ```
 Update the OpenSider for VSCode extension for me.
@@ -74,7 +74,7 @@ Read https://raw.githubusercontent.com/parksben/opensider-vscode/main/packages/e
 
 ### 3. Uninstall
 
-One-step uninstall: one prompt is all it takes, and you choose whether to keep or remove your local data.
+Copy the prompt below to your local agent. You choose whether to keep or delete your local data.
 
 ```
 Uninstall the OpenSider for VSCode extension for me.
