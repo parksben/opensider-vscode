@@ -1,6 +1,6 @@
 <div align="center">
   <br />
-  <img alt="OpenSider" src="media/readme/banner.svg" />
+  <img alt="OpenSider" src="media/readme/banner.png" />
   <p>
     Use multiple agent CLIs in VS Code
   </p>

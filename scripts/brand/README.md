@@ -2,9 +2,8 @@
 
 这里存放 banner 用到的**官方**矢量原文件：右侧五家 Agent 的标记，以及左侧 VS Code
 图标。整份留存、不做裁剪，只给 `scripts/generate_banner.py` 生成 `docs/banner.svg`
-与 `packages/extension/media/readme/banner.svg` 时读取。多数标记脚本按 `fill` 认出需要
-的那几条 `<path>`，只替换填充色，不改形状、不加特效；VS Code 图标整份内联（自带渐变、
-遮罩与滤镜），只给内部 id 加前缀避免撞名。
+时读取。多数标记脚本按 `fill` 认出需要的那几条 `<path>`，只替换填充色，不改形状、
+不加特效；VS Code 图标整份内联（自带渐变、遮罩与滤镜），只给内部 id 加前缀避免撞名。
 
 | 文件 | 品牌 | 来源 | 用到的部分 |
 |---|---|---|---|

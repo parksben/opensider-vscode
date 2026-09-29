@@ -20,13 +20,17 @@ The screenshots are the real side panel, not mockups. From `packages/extension`,
 
 ## README banner
 
-`docs/banner.svg` (used by the GitHub READMEs) and `packages/extension/media/readme/banner.svg` (used by the packaged README) are generated together. Run:
+The GitHub READMEs reference `docs/banner.svg`. The packaged README references `packages/extension/media/readme/banner.png`, because vsce rejects SVG images in a README. The SVG is the source; the PNG is derived from it.
 
 ```sh
-python3 scripts/generate_banner.py
+python3 scripts/generate_banner.py          # writes docs/banner.svg
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+  --default-background-color=00000000 --window-size=1600,488 \
+  --force-device-scale-factor=2 \
+  --screenshot=packages/extension/media/readme/banner.png "file://$PWD/docs/banner.svg"
 ```
 
-Layout, colours and copy live in `scripts/generate_banner.py`; the third-party vector marks it reads are in `scripts/brand/` (see `scripts/brand/README.md` for sources and trademark notes). The banner is the only image checked in as SVG — the side-panel screenshots above are PNG.
+Layout, colours and copy live in `scripts/generate_banner.py`; the third-party vector marks it reads are in `scripts/brand/` (see `scripts/brand/README.md` for sources and trademark notes). The side-panel screenshots above are PNG too.
 
 ## Architecture
 

@@ -549,17 +549,13 @@ def build_svg() -> str:
 
 
 def main() -> None:
-    svg = build_svg()
-    # 单一来源，写两处：仓库根 docs/（GitHub 上的 README 引用），
-    # 以及扩展包内的 media/（打包进 vsix 的 README 引用）。
-    for out in (
-        Path(__file__).resolve().parent.parent / "docs/banner.svg",
-        Path(__file__).resolve().parent.parent
-        / "packages/extension/media/readme/banner.svg",
-    ):
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(svg, encoding="utf-8")
-        print(f"written: {out} ({out.stat().st_size} bytes)")
+    out = Path(__file__).resolve().parent.parent / "docs/banner.svg"
+    out.write_text(build_svg(), encoding="utf-8")
+    print(f"written: {out} ({out.stat().st_size} bytes)")
+    print(
+        "next: rasterize to packages/extension/media/readme/banner.png "
+        "(see docs/DEVELOPMENT.md); vsce rejects SVG in the packaged README"
+    )
 
 
 if __name__ == "__main__":
