@@ -71,6 +71,7 @@ export function ChatPane({
   locale,
   hostReady,
   sessionId,
+  replayKey,
   messages,
   isRunning,
   models,
@@ -122,6 +123,8 @@ export function ChatPane({
   locale: Locale;
   hostReady: boolean;
   sessionId: string;
+  /** Bumped when a resend/edit truncates the tail, so the height reserve releases. */
+  replayKey?: number;
   messages: ChatMessage[];
   isRunning: boolean;
   models: AgentModel[];
@@ -274,7 +277,7 @@ export function ChatPane({
   const listRef = useRef<HTMLDivElement>(null);
   const { tabs: historyTabs } = useComposerHistory();
   const threadEndRef = useRef<HTMLDivElement>(null);
-  const stickToBottom = useThreadFollow(listRef, threadEndRef, sessionId, messages.length > 0);
+  const stickToBottom = useThreadFollow(listRef, threadEndRef, sessionId, messages.length > 0, replayKey);
   const [handoff, setHandoff] = useState<{ prompt: string; installed: boolean | null } | null>(null);
   const editingRef = useRef<string | undefined>(undefined);
   const editingQueueRef = useRef<string | undefined>(undefined);

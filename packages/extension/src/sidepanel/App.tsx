@@ -114,6 +114,9 @@ export function App() {
   const [sawAgents, setSawAgents] = useState(false);
   const [progress, setProgress] = useState<AgentProgress>();
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  // Bumped on a resend/edit (a replay turn): truncating the tail shrinks the transcript,
+  // and the panel releases its height reserve so no blank gap is left behind.
+  const [replaySeq, setReplaySeq] = useState(0);
   const [release, setRelease] = useState<{ version: string; latest: string }>();
   const [updateOpen, setUpdateOpen] = useState(false);
   const [uninstallOpen, setUninstallOpen] = useState(false);
@@ -1620,6 +1623,7 @@ export function App() {
   const startReplayTurn = (source: Session, userIndex: number, user: ChatMessage) => {
     const kept = [...source.messages.slice(0, userIndex), user];
     const prior = source.messages.slice(0, userIndex);
+    setReplaySeq((value) => value + 1);
     pendingRegen.current.set(source.id, {
       text: textOf(user.content),
       attachments: user.attachments ?? [],
@@ -1740,6 +1744,7 @@ export function App() {
               locale={locale}
               hostReady={status === "ready"}
               sessionId={selected.id}
+              replayKey={replaySeq}
               messages={selected.messages}
               workspacePath={workspaceCwd}
               statePath={statePath}
