@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.1.1
+
+Panel performance and a cleaner transcript.
+
+- Persisting panel state is now debounced and fingerprinted, so streaming a reply no longer serializes the whole state on every chunk.
+- Each message bubble memoizes itself, and the browser skips painting the off-screen ones.
+- The transcript gives back the height it reserved for live tool calls once a turn ends, so no blank gap is left below the last reply.
+
 ## 0.1.0
 
 First release, published from GitHub Releases. Not listed on the Marketplace.
