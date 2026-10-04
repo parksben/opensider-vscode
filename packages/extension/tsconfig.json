@@ -14,5 +14,6 @@
       "@shared": ["shared/index.ts"]
     }
   },
-  "include": ["src", "shared"]
+  "include": ["src", "shared"],
+  "exclude": ["src/**/*.test.ts"]
 }

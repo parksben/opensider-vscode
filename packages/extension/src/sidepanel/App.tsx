@@ -79,6 +79,12 @@ const EXTENSION_VERSION = window.__opensiderExtensionVersion ?? "";
 const CHECK_FEEDBACK_MS = 1500;
 /** A manual check the host never answers (offline) flips to failure after this. */
 const CHECK_WATCHDOG_MS = 8000;
+/**
+ * 状态持久化的合并窗口。一次流式回复里 `sessions` 会被改几十次，每次都序列化整份状态
+ * （含所有会话正文）并写出去会持续占满主线程；等这一小段时间只写最后一次，内容不变、
+ * CPU 从「每字一遍」降到「每 500ms 一遍」。
+ */
+const PERSIST_DEBOUNCE_MS = 500;
 
 export function App() {
   const [hydrated, setHydrated] = useState(false);
@@ -1059,10 +1065,19 @@ export function App() {
     applyLocale(locale);
   }, [locale]);
 
+  // 持久化是「一次 profile 变更就写一遍」的操作，而 `sessions` 在一次流式回复里能被改几十次
+  // （每个 `agent_message_chunk` 都新建一份消息数组）。每改一次就把整份状态序列化、写
+  // localStorage、再通过 Native Messaging 发一份给 Host 做镜像，是侧栏 CPU 与内存占用的
+  // 最大来源——Agent 每吐一个字，主线程就要为几 MB 的 JSON 忙一轮。
+  //
+  // 所以这里改成节流：改动只挂一个待写定时器，等一个合并窗口到点再写一次。流式期间的几十次
+  // 变更合并成一次写，写到的也是同一份最终内容。
+  const persistTimer = useRef(0);
+  /** 最近一次写出去的 payload 指纹：没变过就不再写一遍。 */
+  const persistDigest = useRef("");
+
   useEffect(() => {
     if (!hydrated) return;
-    // 先把整份状态序列化成 payload：本地热缓存写失败（配额等）只打警告，
-    // 绝不能连 Host 镜像一起停掉——重装后的恢复靠的就是它。
     const payload = toPersistedState({
       locale,
       theme,
@@ -1080,10 +1095,50 @@ export function App() {
       deletedSessions,
       shareActiveFile,
     });
-    void saveState(payload).then(() => {
-      if (!hostMirrorReady) return;
-      sendRef.current({ type: "ui.state.set", state: payload as Record<string, unknown> });
-    });
+    // 指纹覆盖「内容会不会变」。savedAt 每次 toPersistedState 都不同，不能进指纹，
+    // 否则指纹永远不等、节流就白做了。消息正文逐条哈希比自己写一遍还贵，所以只取
+    // 每条会话的条数与最后一条（turn 结束时 durationMs 才落上，正是折叠的信号）。
+    const digest = JSON.stringify([
+      payload.locale,
+      payload.theme,
+      payload.selectedId,
+      payload.selectedModelId,
+      payload.selectedModelByProvider,
+      payload.agentMode,
+      payload.agentModeByProvider,
+      payload.agentOptionByProvider,
+      payload.selectedProviderId,
+      payload.onboardingCompleted,
+      payload.sessionsOpen,
+      payload.sessionDrawerWidth,
+      payload.deletedSessions,
+      payload.shareActiveFile,
+      payload.sessions.map((session) => [
+        session.id,
+        session.title,
+        session.titleManual,
+        session.updatedAt,
+        session.pinnedAt,
+        session.messages.length,
+        session.todos.length,
+        session.messages[session.messages.length - 1]?.id ?? "",
+        session.messages[session.messages.length - 1]?.durationMs ?? -1,
+      ]),
+    ]);
+    if (digest === persistDigest.current) return;
+    const timer = window.setTimeout(() => {
+      persistTimer.current = 0;
+      // 先把整份状态序列化 + 写本地缓存；再发 Host 镜像。写失败（配额等）只打警告，
+      // 绝不能连镜像一起停掉——重装后的恢复靠的就是它（见 persist.saveState）。
+      void saveState(payload).finally(() => {
+        if (hostMirrorReady) {
+          sendRef.current({ type: "ui.state.set", state: payload as Record<string, unknown> });
+        }
+      });
+      persistDigest.current = digest;
+    }, PERSIST_DEBOUNCE_MS);
+    persistTimer.current = timer;
+    return () => window.clearTimeout(timer);
   }, [
     hydrated,
     hostMirrorReady,
