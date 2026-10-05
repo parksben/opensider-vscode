@@ -8,6 +8,7 @@ import { paneFollowsBottom } from "./pane-follow";
 import { useTerminal } from "../terminals-context";
 import { toolPrimaryArg } from "../tool-label";
 import { toolFinished } from "../tool-status";
+import { usePassedAway } from "../use-passed-away";
 import { IconButton } from "./IconButton";
 
 /** Pulls the printable output out of whatever the agent put in the tool result. */
@@ -66,11 +67,18 @@ export function TerminalCard({
   const exitCode = terminal?.exitCode;
   const [pinned, setPinned] = useState(false);
 
+  // Collapse to the header line once the card has left through the top of the transcript —
+  // never while it is still on screen (that is the measured jitter). See `usePassedAway`.
+  const { ref: passedRef, passed } = usePassedAway<HTMLElement>(Boolean(live));
+
   useEffect(() => {
     if (!live) setPinned(false);
   }, [live]);
 
-  const expanded = Boolean(live) || pinned;
+  // While the turn runs: expanded until the reader has watched it pass; a hand-opened card
+  // stays open. When the turn ends the card folds back to its header line unless the user
+  // opened it.
+  const expanded = live ? !passed || pinned : pinned;
 
   // Follow the tail while it runs, the way a terminal does — but only while the user has
   // not scrolled up to read what already went past. The verdict is recomputed on scroll by
@@ -103,7 +111,7 @@ export function TerminalCard({
   };
 
   return (
-    <section className="group/terminal my-1 overflow-hidden border border-[var(--line)]">
+    <section ref={passedRef} className="group/terminal my-1 overflow-hidden border border-[var(--line)]">
       <div className="flex items-start gap-1.5 px-2 py-1.5">
         <span className="inline-flex h-6 w-3 shrink-0 items-center justify-center text-[var(--muted)]">
           {running ? (
