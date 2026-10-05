@@ -1948,6 +1948,22 @@ function lastTextIndex(parts: ChatPart[]): number {
   return -1;
 }
 
+/**
+ * Whether a tool call was announced after `index` in the same message.
+ *
+ * ACP runs tool calls one after another, so the arrival of a later `tool_call` is proof the
+ * earlier one returned. That matters because `status` and `rawOutput` are both optional in
+ * practice: a command that produced no output at all arrives with neither, leaving the card
+ * spinning forever — and it shows up as "the previous tool is still running even though the
+ * next one finished". The order of the events is the one signal an agent cannot fake.
+ */
+function hasToolCallAfter(parts: ChatPart[], index: number): boolean {
+  for (let next = index + 1; next < parts.length; next += 1) {
+    if (parts[next].type === "tool-call") return true;
+  }
+  return false;
+}
+
 function formatTurnDuration(ms: number, locale: Locale): string {
   const total = Math.max(1, Math.round(ms / 1000));
   if (total < 60) return locale === "zh" ? `${total} 秒` : `${total}s`;
@@ -1968,6 +1984,8 @@ function renderAssistantPart(
   locale: Locale,
   live?: boolean,
   lastIndex?: number,
+  /** A later tool call has already been announced after this one. */
+  superseded?: boolean,
 ) {
   if (part.type === "text") return <Markdown key={index} text={part.text} />;
   if (part.type === "reasoning") {
@@ -1995,9 +2013,25 @@ function renderAssistantPart(
   }
   // 命令用专门的卡片：标题是命令、内容是实时输出，还能跳到终端或输出文件。
   if (part.terminalId || part.kind === "execute") {
-    return <TerminalCard key={part.toolCallId} locale={locale} part={part} live={live} />;
+    return (
+      <TerminalCard
+        key={part.toolCallId}
+        locale={locale}
+        part={part}
+        live={live}
+        superseded={superseded}
+      />
+    );
   }
-  return <ToolCard key={part.toolCallId} locale={locale} part={part} live={live} />;
+  return (
+    <ToolCard
+      key={part.toolCallId}
+      locale={locale}
+      part={part}
+      live={live}
+      superseded={superseded}
+    />
+  );
 }
 
 /**
@@ -2081,14 +2115,18 @@ const AssistantMessage = memo(
     const items = content.map((part, index) => ({ part, index }));
     return (
       <div className="space-y-1">
-        {items.map(({ part, index }) => renderAssistantPart(part, index, locale, live, lastIndex))}
+        {items.map(({ part, index }) =>
+          renderAssistantPart(part, index, locale, live, lastIndex, hasToolCallAfter(content, index)),
+        )}
       </div>
     );
   }
   return (
     <div className="space-y-1">
       <TextFold label={processLabel(locale, durationMs)} paneClass="cs-process-scroll space-y-1">
-        {process.map((part, index) => renderAssistantPart(part, index, locale))}
+        {process.map((part, index) =>
+          renderAssistantPart(part, index, locale, undefined, undefined, hasToolCallAfter(content, index)),
+        )}
       </TextFold>
       {body.map((part, index) => renderAssistantPart(part, cut + index, locale))}
     </div>

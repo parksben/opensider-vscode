@@ -40,16 +40,29 @@ function outputOf(value: unknown): string {
  * agent is still working. When the turn ends the card folds back to its header line, the
  * same place every other step in the process lands.
  */
-export function TerminalCard({ locale, part, live }: { locale: Locale; part: ToolPart; live?: boolean }) {
+export function TerminalCard({
+  locale,
+  part,
+  live,
+  superseded,
+}: {
+  locale: Locale;
+  part: ToolPart;
+  live?: boolean;
+  /** A later tool call was announced after this one, so it has returned. */
+  superseded?: boolean;
+}) {
   const terminal = useTerminal(part.terminalId);
   const bodyRef = useRef<HTMLPreElement>(null);
   const command = terminal?.command || toolPrimaryArg(part) || part.toolName;
   const output = terminal ? terminal.output : outputOf(part.result);
+  // `terminal.running` comes from a real VS Code terminal, so it is exact. Without one we
+  // are down to the tool call itself, and there neither `status` nor `rawOutput` can be
+  // trusted: a command that printed nothing has neither. A later tool call having been
+  // announced is the signal that settles it (ACP runs them one at a time).
   const running = terminal
     ? terminal.running
-    : // Same reason as `ToolCard`: `part.status` is unreliable — plenty of agents emit
-      // a result without ever revising it, and the card would spin forever.
-      !toolFinished(part);
+    : !toolFinished(part) && !superseded;
   const exitCode = terminal?.exitCode;
   const [pinned, setPinned] = useState(false);
 

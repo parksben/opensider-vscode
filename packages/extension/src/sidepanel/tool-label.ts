@@ -52,6 +52,17 @@ function fromTitle(title: string): { key: MessageKey; detail: string } | undefin
   return undefined;
 }
 
+export function toolTitle(locale: Locale, part: ToolPart): string {
+  const raw = part.toolName?.trim() ?? "";
+  const parsed = fromTitle(raw);
+  const key = parsed?.key ?? kindKey(part.kind) ?? "toolOther";
+  const label = t(locale, key);
+  const detail = parsed?.detail ?? "";
+  if (detail) return `${label} ${detail}`;
+  if (raw && raw.toLowerCase() !== "tool") return raw;
+  return label;
+}
+
 export function toolLabel(locale: Locale, part: ToolPart): string {
   const raw = part.toolName?.trim() ?? "";
   const parsed = fromTitle(raw);
