@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { paneFollowsBottom } from "./pane-follow";
 import { useTerminal } from "../terminals-context";
 import { toolPrimaryArg } from "../tool-label";
+import { toolFinished } from "../tool-status";
 import { IconButton } from "./IconButton";
 
 /** Pulls the printable output out of whatever the agent put in the tool result. */
@@ -46,7 +47,9 @@ export function TerminalCard({ locale, part, live }: { locale: Locale; part: Too
   const output = terminal ? terminal.output : outputOf(part.result);
   const running = terminal
     ? terminal.running
-    : part.status === "pending" || part.status === "in_progress";
+    : // Same reason as `ToolCard`: `part.status` is unreliable — plenty of agents emit
+      // a result without ever revising it, and the card would spin forever.
+      !toolFinished(part);
   const exitCode = terminal?.exitCode;
   const [pinned, setPinned] = useState(false);
 
