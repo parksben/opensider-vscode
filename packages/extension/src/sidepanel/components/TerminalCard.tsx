@@ -74,8 +74,9 @@ export function TerminalCard({
 
   // Follow the tail while it runs, the way a terminal does — but only while the user has
   // not scrolled up to read what already went past. The verdict is recomputed on scroll by
-  // the handler below, so a wheel-up outside the sticky band stops the follow and a
-  // wheel-down back into it picks it up again.
+  // the handler below, so any scroll up releases the follow and only a return to the exact
+  // bottom picks it up again (transient output arrives every few hundred ms; a wider band
+  // would drag the reader back down mid-read).
   const following = useRef(true);
   useEffect(() => {
     const node = bodyRef.current;
