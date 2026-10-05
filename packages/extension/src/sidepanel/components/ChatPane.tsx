@@ -1948,26 +1948,6 @@ function lastTextIndex(parts: ChatPart[]): number {
   return -1;
 }
 
-function liveVisibleParts(parts: ChatPart[]): Array<{ part: ChatPart; index: number }> {
-  const visible: Array<{ part: ChatPart; index: number }> = [];
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index];
-    if (part.type === "text") {
-      const prev = visible[visible.length - 1];
-      if (prev && prev.part.type !== "text") visible.pop();
-      visible.push({ part, index });
-      continue;
-    }
-    const prev = visible[visible.length - 1];
-    if (prev && prev.part.type !== "text") {
-      visible[visible.length - 1] = { part, index };
-    } else {
-      visible.push({ part, index });
-    }
-  }
-  return visible;
-}
-
 function formatTurnDuration(ms: number, locale: Locale): string {
   const total = Math.max(1, Math.round(ms / 1000));
   if (total < 60) return locale === "zh" ? `${total} 秒` : `${total}s`;
@@ -1997,6 +1977,8 @@ function renderAssistantPart(
         key={index}
         label={t(locale, "thinking")}
         paneClass="cs-fold-scroll"
+        open={thinking ? true : undefined}
+        follow={thinking}
         icon={
           thinking ? (
             <span className="inline-flex shrink-0 text-[var(--muted)]">
@@ -2013,9 +1995,9 @@ function renderAssistantPart(
   }
   // 命令用专门的卡片：标题是命令、内容是实时输出，还能跳到终端或输出文件。
   if (part.terminalId || part.kind === "execute") {
-    return <TerminalCard key={part.toolCallId} locale={locale} part={part} />;
+    return <TerminalCard key={part.toolCallId} locale={locale} part={part} live={live} />;
   }
-  return <ToolCard key={part.toolCallId} locale={locale} part={part} />;
+  return <ToolCard key={part.toolCallId} locale={locale} part={part} live={live} />;
 }
 
 /**
@@ -2090,7 +2072,13 @@ const AssistantMessage = memo(
   const fold = !live && process.length > 0;
   const lastIndex = content.length - 1;
   if (!fold) {
-    const items = live ? liveVisibleParts(content) : content.map((part, index) => ({ part, index }));
+    // Running: every step gets its own line and its own open card. An earlier version
+    // collapsed a run of reasoning / tool steps down to the last one, which made a long
+    // turn read as "one step at a time" — you could not see what had already happened, and
+    // the steps that finished disappeared from the screen entirely. Now they stack up while
+    // the turn runs, and the whole stack folds into one line when it ends (the `fold`
+    // branch below).
+    const items = content.map((part, index) => ({ part, index }));
     return (
       <div className="space-y-1">
         {items.map(({ part, index }) => renderAssistantPart(part, index, locale, live, lastIndex))}

@@ -1,9 +1,10 @@
-import { ExternalLink, LoaderCircle, SquareTerminal } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { ChevronDown, ChevronRight, ExternalLink, LoaderCircle, SquareTerminal } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { postExtension } from "../bridge";
 import type { ToolPart } from "../chat-types";
 import type { Locale } from "../i18n";
 import { t } from "../i18n";
+import { paneFollowsBottom } from "./pane-follow";
 import { useTerminal } from "../terminals-context";
 import { toolPrimaryArg } from "../tool-label";
 import { IconButton } from "./IconButton";
@@ -32,8 +33,13 @@ function outputOf(value: unknown): string {
  * reveals that terminal. When the agent runs the command itself we only have the tool
  * call's own result, and the button opens a read-only editor tab instead. The card looks
  * the same either way.
+ *
+ * `live` is the *turn's* running state, not this command's: a command that finished a few
+ * steps ago has to stay open, otherwise the transcript collapses under the user while the
+ * agent is still working. When the turn ends the card folds back to its header line, the
+ * same place every other step in the process lands.
  */
-export function TerminalCard({ locale, part }: { locale: Locale; part: ToolPart }) {
+export function TerminalCard({ locale, part, live }: { locale: Locale; part: ToolPart; live?: boolean }) {
   const terminal = useTerminal(part.terminalId);
   const bodyRef = useRef<HTMLPreElement>(null);
   const command = terminal?.command || toolPrimaryArg(part) || part.toolName;
@@ -42,12 +48,36 @@ export function TerminalCard({ locale, part }: { locale: Locale; part: ToolPart 
     ? terminal.running
     : part.status === "pending" || part.status === "in_progress";
   const exitCode = terminal?.exitCode;
+  const [pinned, setPinned] = useState(false);
 
-  // Follow the tail while it runs, the way a terminal does.
+  useEffect(() => {
+    if (!live) setPinned(false);
+  }, [live]);
+
+  const expanded = Boolean(live) || pinned;
+
+  // Follow the tail while it runs, the way a terminal does — but only while the user has
+  // not scrolled up to read what already went past. The verdict is recomputed on scroll by
+  // the handler below, so a wheel-up outside the sticky band stops the follow and a
+  // wheel-down back into it picks it up again.
+  const following = useRef(true);
   useEffect(() => {
     const node = bodyRef.current;
-    if (node && running) node.scrollTop = node.scrollHeight;
+    if (!node) return;
+    following.current = paneFollowsBottom(node.scrollHeight, node.clientHeight, node.scrollTop);
+  }, [output]);
+  useEffect(() => {
+    const node = bodyRef.current;
+    if (!node || !running || !following.current) return;
+    node.scrollTop = node.scrollHeight;
   }, [output, running]);
+
+  const onScroll = () => {
+    const node = bodyRef.current;
+    if (node) {
+      following.current = paneFollowsBottom(node.scrollHeight, node.clientHeight, node.scrollTop);
+    }
+  };
 
   const openLabel = terminal ? t(locale, "openInTerminal") : t(locale, "openOutputFile");
   const open = () => {
@@ -56,7 +86,7 @@ export function TerminalCard({ locale, part }: { locale: Locale; part: ToolPart 
   };
 
   return (
-    <section className="my-1 overflow-hidden border border-[var(--line)]">
+    <section className="group/terminal my-1 overflow-hidden border border-[var(--line)]">
       <div className="flex items-start gap-1.5 px-2 py-1.5">
         <span className="inline-flex h-6 w-3 shrink-0 items-center justify-center text-[var(--muted)]">
           {running ? (
@@ -65,9 +95,21 @@ export function TerminalCard({ locale, part }: { locale: Locale; part: ToolPart 
             <SquareTerminal size={12} strokeWidth={1.75} />
           )}
         </span>
-        <code className="cs-terminal-command max-h-[5lh] min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words font-[var(--vscode-editor-font-family)] text-[11.5px] leading-6 text-[var(--text)]">
-          {command}
-        </code>
+        <button
+          type="button"
+          onClick={() => setPinned((value) => !value)}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-center gap-1 text-left"
+        >
+          {expanded ? (
+            <ChevronDown size={12} className="shrink-0 text-[var(--muted)]" />
+          ) : (
+            <ChevronRight size={12} className="shrink-0 text-[var(--muted)] opacity-0 transition-opacity group-hover/terminal:opacity-100" />
+          )}
+          <code className="cs-terminal-command max-h-[5lh] min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words font-[var(--vscode-editor-font-family)] text-[11.5px] leading-6 text-[var(--text)]">
+            {command}
+          </code>
+        </button>
         {!running && exitCode != null ? (
           <span
             className={`inline-flex h-6 shrink-0 items-center text-[10.5px] ${exitCode === 0 ? "text-[var(--muted)]" : "text-[var(--bad)]"}`}
@@ -84,9 +126,10 @@ export function TerminalCard({ locale, part }: { locale: Locale; part: ToolPart 
           <ExternalLink size={12} />
         </IconButton>
       </div>
-      {output ? (
+      {output && expanded ? (
         <pre
           ref={bodyRef}
+          onScroll={onScroll}
           className="cs-fold-scroll overflow-auto whitespace-pre-wrap break-words border-t border-[var(--line)] px-2 py-1.5 font-[var(--vscode-editor-font-family)] text-[11px] leading-relaxed text-[var(--muted)]"
         >
           {output}
