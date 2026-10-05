@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.1.2
+
+Every step of a running turn stays on screen.
+
+- All tool calls and terminal commands stay expanded for the whole turn instead of collapsing as each one finishes, and the reasoning block being written expands too.
+- An expanded result follows its own stream at the bottom; scrolling up releases the follow and coming back near the bottom picks it up again.
+- Everything folds back when the turn ends, so no blank gap is left below the last reply.
+
 ## 0.1.1
 
 Panel performance and a cleaner transcript.
