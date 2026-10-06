@@ -70,10 +70,9 @@ export function TerminalCard({
     if (!live) setPinned(false);
   }, [live]);
 
-  // While the turn runs the card stays open: `LiveStep` hides a finished step but keeps its
-  // box on purpose, and that box is the card's expanded height — folding the card itself
-  // would change the layout the box was meant to preserve. After the turn it folds back to
-  // its header line unless the user opened it.
+  // While the turn runs the card is only ever rendered while it is the running step (the
+  // live branch drops it the moment it finishes); it stays expanded so the output is
+  // visible. After the turn it folds back to its header line unless the user opened it.
   const expanded = Boolean(live) || pinned;
 
   // Follow the tail while it runs, the way a terminal does — but only while the user has
