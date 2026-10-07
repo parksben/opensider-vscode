@@ -1070,15 +1070,31 @@ export function App() {
   // localStorage、再通过 Native Messaging 发一份给 Host 做镜像，是侧栏 CPU 与内存占用的
   // 最大来源——Agent 每吐一个字，主线程就要为几 MB 的 JSON 忙一轮。
   //
-  // 所以这里改成节流：改动只挂一个待写定时器，等一个合并窗口到点再写一次。流式期间的几十次
-  // 变更合并成一次写，写到的也是同一份最终内容。
+  // 两道闸：① 指纹先算、payload 后建（它会把全部消息和部件重建成新对象，只在真要写时做）；
+  // ② 一轮进行中不写**正文**——节流治不了「整轮都在变」，合并窗口到点写出去的仍是那个
+  // 会持续膨胀的 32MB 镜像（浏览器版实测每 1.5–10 秒推一次，把 Chrome 浏览器进程拖崩，
+  // 见 docs/TECH_DESIGN.md「性能」）。回合结束时 running 与 durationMs 一起变，这个 effect
+  // 会再跑一次并把最终内容写出去。
+  //
+  // 「不写正文」不等于什么都不写：权限档 / 模型 / 主题这类**设置**是别的消费面的死活线
+  // （浏览器版 SW 读 `agentMode` 做借用闸门），用户在一轮进行中切「允许一切」必须立刻生效
+  // ——所以设置指纹一变就照写（payload 仍是整份，但这是用户动作、频率极低）。
   const persistTimer = useRef(0);
   /** 最近一次写出去的 payload 指纹：没变过就不再写一遍。 */
   const persistDigest = useRef("");
+  /** 最近一次写出去的设置指纹：正文在流式、但设置变了时不跟着一起憋着。 */
+  const persistSettingsDigest = useRef("");
+  /** 立刻写一次（webview 要藏起来时用）：不走合并窗口、也不受「回合进行中」限制。 */
+  const persistFlush = useRef<() => void>(() => undefined);
+  /** 任意会话有一轮在跑：正文变化这期间不落盘（流式内容每半秒都在变，写出去是纯浪费）。 */
+  const anyTurnRunning = runningIds.length > 0;
 
   useEffect(() => {
     if (!hydrated) return;
-    const payload = toPersistedState({
+    // 指纹覆盖「内容会不会变」。savedAt 每次 toPersistedState 都不同，不能进指纹，
+    // 否则指纹永远不等、节流就白做了。消息正文逐条哈希比自己写一遍还贵，所以只取
+    // 每条会话的条数与最后一条（turn 结束时 durationMs 才落上，正是折叠的信号）。
+    const settingsDigest = JSON.stringify([
       locale,
       theme,
       selectedId,
@@ -1090,30 +1106,12 @@ export function App() {
       selectedProviderId,
       onboardingCompleted,
       sessionsOpen,
-      sessionDrawerWidth: drawerWidth,
-      sessions,
+      drawerWidth,
       deletedSessions,
       shareActiveFile,
-    });
-    // 指纹覆盖「内容会不会变」。savedAt 每次 toPersistedState 都不同，不能进指纹，
-    // 否则指纹永远不等、节流就白做了。消息正文逐条哈希比自己写一遍还贵，所以只取
-    // 每条会话的条数与最后一条（turn 结束时 durationMs 才落上，正是折叠的信号）。
-    const digest = JSON.stringify([
-      payload.locale,
-      payload.theme,
-      payload.selectedId,
-      payload.selectedModelId,
-      payload.selectedModelByProvider,
-      payload.agentMode,
-      payload.agentModeByProvider,
-      payload.agentOptionByProvider,
-      payload.selectedProviderId,
-      payload.onboardingCompleted,
-      payload.sessionsOpen,
-      payload.sessionDrawerWidth,
-      payload.deletedSessions,
-      payload.shareActiveFile,
-      payload.sessions.map((session) => [
+    ]);
+    const transcriptDigest = JSON.stringify(
+      sessions.map((session) => [
         session.id,
         session.title,
         session.titleManual,
@@ -1124,10 +1122,28 @@ export function App() {
         session.messages[session.messages.length - 1]?.id ?? "",
         session.messages[session.messages.length - 1]?.durationMs ?? -1,
       ]),
-    ]);
-    if (digest === persistDigest.current) return;
-    const timer = window.setTimeout(() => {
+    );
+    const digest = JSON.stringify([settingsDigest, transcriptDigest]);
+    const write = () => {
+      window.clearTimeout(persistTimer.current);
       persistTimer.current = 0;
+      const payload = toPersistedState({
+        locale,
+        theme,
+        selectedId,
+        selectedModelId,
+        selectedModelByProvider,
+        agentMode,
+        agentModeByProvider,
+        agentOptionByProvider,
+        selectedProviderId,
+        onboardingCompleted,
+        sessionsOpen,
+        sessionDrawerWidth: drawerWidth,
+        sessions,
+        deletedSessions,
+        shareActiveFile,
+      });
       // 先把整份状态序列化 + 写本地缓存；再发 Host 镜像。写失败（配额等）只打警告，
       // 绝不能连镜像一起停掉——重装后的恢复靠的就是它（见 persist.saveState）。
       void saveState(payload).finally(() => {
@@ -1136,12 +1152,19 @@ export function App() {
         }
       });
       persistDigest.current = digest;
-    }, PERSIST_DEBOUNCE_MS);
+      persistSettingsDigest.current = settingsDigest;
+    };
+    persistFlush.current = write;
+    if (digest === persistDigest.current) return;
+    // 一轮进行中：只有设置变了才写（见上面注释）；正文的变化等回合结束时再一次性写出。
+    if (anyTurnRunning && settingsDigest === persistSettingsDigest.current) return;
+    const timer = window.setTimeout(write, PERSIST_DEBOUNCE_MS);
     persistTimer.current = timer;
     return () => window.clearTimeout(timer);
   }, [
     hydrated,
     hostMirrorReady,
+    anyTurnRunning,
     locale,
     theme,
     selectedId,
@@ -1158,6 +1181,22 @@ export function App() {
     deletedSessions,
     shareActiveFile,
   ]);
+
+  // webview 要藏起来 / 被关掉：合并窗口里那一次可能还没到点，补写一次——否则
+  // 「回合进行中不写」会让刚跑完的那一轮卡在内存里。VS Code 的 webview 在切走 /
+  // dispose 时同样触发 pagehide / visibilitychange。
+  useEffect(() => {
+    const flush = () => persistFlush.current();
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     applyThemePreference(theme);
