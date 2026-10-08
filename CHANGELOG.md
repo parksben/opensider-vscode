@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.1.3
+
+macOS stops asking whether it should trust the files a session unpacks.
+
+- The host signs an extracted native library before clearing its quarantine flag. Signing rewrites the binary, and when the launching app itself is quarantined macOS stamps the flag onto the file again, so clearing first left it in place and every session popped a handful of Gatekeeper warnings.
+- The agent's native directory is cleaned before the sweep loop starts, which also covers executables the old extension-and-size filter never visited.
+- The OpenCode profile opts out of the native fff module, so its dylib is not unpacked at all.
+
 ## 0.1.2
 
 Every step of a running turn stays on screen.

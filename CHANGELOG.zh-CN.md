@@ -2,6 +2,14 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.1.3
+
+macOS 不再追问每次会话解出来的文件能不能信。
+
+- Host 改为先给解出的原生库签名、再清隔离属性。签名会重写二进制，而拉起方本身带隔离时 macOS 会把隔离属性重新盖回文件上，所以原先「先清后签」等于没清，每开一次会话就要弹好几次 Gatekeeper 告警。
+- 扫循环开始前先把 Agent 原生目录里已有的文件清一遍，顺带覆盖旧实现按扩展名和体积挑不到的可执行文件。
+- OpenCode 这一路关掉原生 fff 模块，它的 dylib 根本不再解压。
+
 ## 0.1.2
 
 一轮对话跑起来的时候，每一步都留在屏幕上。
