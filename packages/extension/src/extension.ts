@@ -1,5 +1,5 @@
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import * as vscode from "vscode";
@@ -37,6 +37,29 @@ const VIEW_ID = "opensider-vscode.chat";
 
 function homeDir(): string {
   return path.join(homedir(), ".opensider-vscode");
+}
+
+/**
+ * The dropped folder's name as one safe path segment, or "" when it cannot be used.
+ * Mirrors the browser host (`internal/workspace`): reject separators and dot segments
+ * outright — we only ever send a plain folder name, so anything else is not ours.
+ */
+function safeUploadSegment(value: string): string {
+  const part = value.trim();
+  if (!part || part === "." || part === "..") return "";
+  if (/[\\/:*?"<>|\0]/.test(part) || path.isAbsolute(part)) return "";
+  return part;
+}
+
+/**
+ * The file's path inside a dropped folder (`src/a.ts` stays `src/a.ts`), or "" when any
+ * segment is empty / dot / escaping / absolute — those never come from our own walk.
+ */
+function safeUploadRel(value: string): string {
+  const parts = value.replace(/\\/g, "/").split("/").filter((part) => part && part !== ".");
+  if (parts.length === 0) return "";
+  if (parts.some((part) => part === ".." || part.includes("\0") || /[:*?"<>|]/.test(part))) return "";
+  return path.join(...parts);
 }
 
 function panelHtml(webview: vscode.Webview, extensionPath: string, version: string): string {
@@ -372,15 +395,36 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     const requestId = typeof message.requestId === "string" ? message.requestId : "";
     const reply = type === "fs.save" ? "fs.saved" : "fs.uploaded";
     try {
-      const dir = path.join(homeDir(), "uploads");
-      await mkdir(dir, { recursive: true });
-      const raw = typeof message.name === "string" && message.name ? message.name : `paste-${Date.now()}.png`;
-      const file = path.join(dir, `${Date.now()}-${path.basename(raw)}`);
+      const uploadsDir = path.join(homeDir(), "uploads");
+      await mkdir(uploadsDir, { recursive: true });
       const payload = typeof message.imageBase64 === "string" ? message.imageBase64 : String(message.base64 ?? "");
-      await writeFile(file, Buffer.from(payload, "base64"));
-      const name = path.basename(file);
+      const raw = typeof message.name === "string" && message.name ? message.name : `paste-${Date.now()}.png`;
+      // A dropped folder keeps its shape (`uploads/<folder>/<relative>`): the Agent reads
+      // the copy, and the side panel attaches the folder itself — not every file inside
+      // (see App.tsx onUploadFiles). Pasted images / single files keep the flat name.
+      const folder = type === "fs.upload" && typeof message.dir === "string" ? safeUploadSegment(message.dir) : "";
+      const relative = folder ? safeUploadRel(raw) : "";
+      let target: string;
+      if (folder && relative) {
+        target = path.join(uploadsDir, folder, relative);
+        await mkdir(path.dirname(target), { recursive: true });
+        if (existsSync(target)) {
+          const ext = path.extname(target);
+          target = `${target.slice(0, target.length - ext.length)}-${Date.now()}${ext}`;
+        }
+      } else {
+        target = path.join(uploadsDir, `${Date.now()}-${path.basename(raw)}`);
+      }
+      await writeFile(target, Buffer.from(payload, "base64"));
+      const name = path.basename(target);
       const kind = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name) ? "image" : "file";
-      this.post({ type: "host", message: { type: reply, requestId, items: [{ path: file, name, kind }] } });
+      const items: { path: string; name: string; kind: string }[] = [];
+      // 文件夹项每次都带：目录已存在时（再次拖同一个文件夹）侧栏仍要靠它挂上文件夹本身。
+      if (folder && relative) {
+        items.push({ path: path.join(uploadsDir, folder), name: folder, kind: "folder" });
+      }
+      items.push({ path: target, name, kind });
+      this.post({ type: "host", message: { type: reply, requestId, items } });
     } catch (error) {
       this.post({
         type: "host",
