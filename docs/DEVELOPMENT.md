@@ -54,6 +54,8 @@ ACP `terminal/*` is forwarded from the Go host to the extension, because only th
 | `packages/extension/src/sidepanel/` | React side panel |
 | `packages/extension/shared/` | Wire protocol between the panel and the extension |
 
+The ACP client reads the agent's stdout line by line with no upper bound, and trims any string over 64KB to a short preview before an update is forwarded to the extension. A line cap on that path is a hang: reaching it ends the read loop while the agent is still writing, so the request in flight (`session/load`, `session/prompt`) never comes back and the panel sits on "running" forever. OpenCode replaying a session that read a PNG emits single updates of ~10MB, which is how it was hit.
+
 ## Language
 
 The panel defaults to VS Code's display language: `panelHtml` bakes `vscode.env.language` into the webview as `window.__opensiderLanguage`, and the panel detects its locale from it on first run. The locale is cached only when the user picks one in the panel's settings, so until then the default keeps following VS Code's display language. The cache key is `opensider/locale`.
