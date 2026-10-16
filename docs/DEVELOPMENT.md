@@ -58,6 +58,10 @@ The ACP client reads the agent's stdout line by line with no upper bound, and tr
 
 `internal/detect/` also refuses to list an agent whose ACP adapter is installed but whose own CLI is gone. Claude Code and Codex are the cases: OpenSider installs their adapters, and those adapters even bundle the engine (`codex-acp` ships a copy of `codex` under `node_modules/.bin`), so a plain path lookup keeps finding the agent after the user uninstalls the CLI. Profiles declare `CLINames`, and `resolveLaunch` verifies the real CLI on `paths.HostSearchDirs` — version-manager bins plus `PATH`, never the adapter prefixes — through `detect.ResolveHostCLI`. `install.findHostCLI` follows the same rule, so a leftover adapter no longer counts as "installed".
 
+## Reply actions
+
+A finished reply's hover row offers copy, fork and regenerate. Only regenerate is gated by the session's running state (`locked={isRunning}`); copy and fork stay clickable while a turn streams. `forkFromMessage` opens a **new** local session and never touches the prompt that is running, so it must not check `sessionBusy` either — a busy gate there swallowed the click and the button looked dead whenever the source session had a turn in flight. The browser extension's shared panel is the source of this rule; keep the two in step.
+
 ## Language
 
 The panel defaults to VS Code's display language: `panelHtml` bakes `vscode.env.language` into the webview as `window.__opensiderLanguage`, and the panel detects its locale from it on first run. The locale is cached only when the user picks one in the panel's settings, so until then the default keeps following VS Code's display language. The cache key is `opensider/locale`.
