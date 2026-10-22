@@ -314,9 +314,10 @@ export function App() {
     interrupt = false,
     skillPrefix = "",
     attachments: AttachmentItem[] = [],
+    meta?: { messageId?: string; userText?: string; userAttachments?: AttachmentItem[] },
   ) => {
     const requestId = crypto.randomUUID();
-    bindRegistry.current.add(requestId, localId, "prompt");
+    bindRegistry.current.add(requestId, localId, "prompt", meta);
     // Ambient editor context, read at send time so it reflects where the user actually
     // was — only when the active-file chip is included, and not when a chip already pins
     // that exact range.
@@ -791,13 +792,25 @@ export function App() {
       // 一律不改动本地绑定（错位配对会把旧任务的内容串进新会话）。
       const ticket = bindRegistry.current.take(msg.requestId);
       if (!ticket) return;
+      // A failed fork, and use/prompt falling back to session/new after a failed
+      // session/load, leave the agent with no history: carry the local transcript into
+      // the next prompt. A brand-new session already sets this before sending.
+      const lostHistory =
+        (ticket.kind === "fork" && msg.forked === false) ||
+        ((ticket.kind === "use" || ticket.kind === "prompt") && msg.created === true);
       patchSession(ticket.localId, (session) => ({
         ...bindAcpSession(session, selectedProviderRef.current, msg.sessionId),
-        pendingForkContext:
-          ticket.kind === "fork" && msg.forked === false
-            ? (session.pendingForkContext ?? buildForkContext(session.messages))
-            : session.pendingForkContext,
+        pendingForkContext: lostHistory
+          ? (session.pendingForkContext ??
+            (session.messages.length > 0 ? buildForkContext(session.messages) : undefined))
+          : session.pendingForkContext,
       }));
+      // The host says this session is already prompting: adopt it so the composer queues.
+      if (msg.running === true && !runningIdsRef.current.has(ticket.localId)) {
+        const next = new Set(runningIdsRef.current);
+        next.add(ticket.localId);
+        syncRunning(next);
+      }
       const regen = pendingRegen.current.get(ticket.localId);
       if (regen && ticket.kind === "new") {
         pendingRegen.current.delete(ticket.localId);
@@ -982,6 +995,34 @@ export function App() {
       }
       if (msg.stopReason === "error" && !msg.interrupted && localId === selectedIdRef.current) {
         setError(msg.error?.trim() || t(localeRef.current, "turnError"));
+      }
+      return;
+    }
+    if (msg.type === "prompt.busy") {
+      // The host refused this prompt because the session is already running. Pull the
+      // message that just went on screen back into the queue and keep the running state;
+      // it is sent again when the current turn ends. Silently dropping it used to leave
+      // the old turn's late output under the new message.
+      const ticket = bindRegistry.current.take(msg.requestId);
+      if (!ticket || ticket.kind !== "prompt") return;
+      const localId = ticket.localId;
+      if (!runningIdsRef.current.has(localId)) {
+        const next = new Set(runningIdsRef.current);
+        next.add(localId);
+        syncRunning(next);
+      }
+      const meta = ticket.meta;
+      if (!meta?.messageId) return;
+      const session = sessionsRef.current.find((item) => item.id === localId);
+      if (!session?.messages.some((item) => item.id === meta.messageId)) return;
+      updateSessionMessages(localId, (current) => current.filter((item) => item.id !== meta.messageId));
+      if (typeof meta.userText === "string") {
+        const item: QueuedMessage = {
+          id: crypto.randomUUID(),
+          text: meta.userText,
+          attachments: meta.userAttachments ?? [],
+        };
+        setSessionQueue(localId, [...(queuesRef.current[localId] ?? []), item]);
       }
       return;
     }
@@ -1341,6 +1382,7 @@ export function App() {
       options.interrupt,
       skillPrefix,
       attachments,
+      { messageId: user.id, userText: text, userAttachments: attachments },
     );
   };
 

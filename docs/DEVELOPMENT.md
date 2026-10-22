@@ -58,6 +58,14 @@ The ACP client reads the agent's stdout line by line with no upper bound, and tr
 
 `internal/detect/` also refuses to list an agent whose ACP adapter is installed but whose own CLI is gone. Claude Code and Codex are the cases: OpenSider installs their adapters, and those adapters even bundle the engine (`codex-acp` ships a copy of `codex` under `node_modules/.bin`), so a plain path lookup keeps finding the agent after the user uninstalls the CLI. Profiles declare `CLINames`, and `resolveLaunch` verifies the real CLI on `paths.HostSearchDirs` — version-manager bins plus `PATH`, never the adapter prefixes — through `detect.ResolveHostCLI`. `install.findHostCLI` follows the same rule, so a leftover adapter no longer counts as "installed".
 
+## Session continuity
+
+Hiding the view does not stop a turn: `retainContextWhenHidden` keeps the webview alive, `onDidDispose` only clears the reference, and the Go host is stopped only when the extension deactivates. What needs care is the panel's view of a live turn:
+
+- `session.use` reports `running: true` when the session is already prompting. The panel adopts it (`runningIds`), so the composer queues instead of sending into a busy session.
+- A prompt for a session that is already running is refused with `prompt.busy`; the panel pulls that message out of the transcript, puts it back in `queues`, and keeps running until `turn.end` flushes it. Do not go back to logging and dropping the prompt: the user sees a vanished message and the old turn's late output lands under it.
+- When `session/load` fails and the host falls back to `session/new`, the reply carries `created: true`. The panel then writes the local transcript into `pendingForkContext`, exactly like a failed fork, so the next prompt carries the history. Without it the agent restarts from a blank context.
+
 ## Reply actions
 
 A finished reply's hover row offers copy, fork and regenerate. Only regenerate is gated by the session's running state (`locked={isRunning}`); copy and fork stay clickable while a turn streams. `forkFromMessage` opens a **new** local session and never touches the prompt that is running, so it must not check `sessionBusy` either — a busy gate there swallowed the click and the button looked dead whenever the source session had a turn in flight. The browser extension's shared panel is the source of this rule; keep the two in step.

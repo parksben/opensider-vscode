@@ -9,17 +9,30 @@
  * 一一配对；配不上的回执（Host 重连回放、Host 自发消息）不改动任何绑定。
  */
 
+import type { AttachmentItem } from "@shared";
+
 export type BindKind = "new" | "use" | "fork" | "prompt";
 
-export type BindTicket = { localId: string; kind: BindKind };
+/**
+ * A prompt the host refused (the session is already running) has to be pulled back into
+ * the queue, so the ticket carries what the panel put on screen: messageId removes it
+ * precisely, userText / userAttachments rebuild the queued item.
+ */
+export type BindMeta = {
+  messageId?: string;
+  userText?: string;
+  userAttachments?: AttachmentItem[];
+};
+
+export type BindTicket = { localId: string; kind: BindKind; meta?: BindMeta };
 
 export class BindRegistry {
   private items = new Map<string, BindTicket>();
 
   /** 登记一个待回执的请求。同一会话的新 prompt 会顶掉旧的 prompt 悬挂项。 */
-  add(requestId: string, localId: string, kind: BindKind): void {
+  add(requestId: string, localId: string, kind: BindKind, meta?: BindMeta): void {
     if (kind === "prompt") this.dropPrompts(localId);
-    this.items.set(requestId, { localId, kind });
+    this.items.set(requestId, { localId, kind, meta });
   }
 
   /** 按 requestId 取回执的归属；取不到（不存在 / 已清理）返回 undefined。 */

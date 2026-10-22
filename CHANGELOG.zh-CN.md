@@ -2,6 +2,14 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.1.6
+
+收起 OpenSider 视图后，正在跑的一轮不会再“看起来断了”。
+
+- 回合进行中重新打开视图会接上在跑状态，输入框进入排队模式，不会把消息发进一个已经在跑的会话。
+- 发进在跑会话的消息会回到队列而不是被静默丢弃，Agent 迟到的输出也不会再落到这条新消息下面。
+- Agent 无法恢复旧会话（`session/load` 失败）时，下一条消息会自动带上本地历史，不再从空白上下文开始。
+
 ## 0.1.5
 
 Sessions no longer stop responding.

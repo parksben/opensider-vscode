@@ -341,11 +341,13 @@ export type HostToExt =
   | { type: "status"; state: HostStatusState; error?: string }
   | { type: "agents"; agents: AgentInfo[]; selectedId?: string }
   | { type: "agent.progress"; progress: AgentProgress }
-  | { type: "session"; sessionId: string; replay?: boolean; created?: boolean; forked?: boolean; requestId?: string }
+  | { type: "session"; sessionId: string; replay?: boolean; created?: boolean; forked?: boolean; running?: boolean; requestId?: string }
   | { type: "update"; update: Record<string, unknown>; sessionId?: string }
   | { type: "permission"; id: number; params: Record<string, unknown>; sessionId?: string }
   | { type: "cursor"; id?: number; method: string; params: Record<string, unknown>; sessionId?: string }
   | { type: "turn.end"; stopReason: string; sessionId?: string; error?: string; interrupted?: boolean }
+  /** The host refused this prompt: the session is already running. The panel requeues it. */
+  | { type: "prompt.busy"; requestId: string; sessionId?: string }
   | { type: "models"; models: AgentModel[]; currentId: string }
   | {
       type: "agentModes";

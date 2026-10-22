@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.1.6
+
+A running turn survives hiding the OpenSider view.
+
+- Reopening the view mid-turn adopts the live turn, so the composer queues a new message instead of sending it into a session that is already working.
+- A message sent into a busy session is put back into the queue rather than dropped; the agent's late output no longer appears under the wrong message.
+- When the agent cannot reload an old session (`session/load` fails), the local transcript is carried into the next prompt instead of starting from a blank context.
+
 ## 0.1.5
 
 Sessions no longer stop responding.
