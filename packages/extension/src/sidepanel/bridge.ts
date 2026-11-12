@@ -10,7 +10,13 @@ const vscodeApi: VsCodeApi = acquireVsCodeApi();
 const listeners = new Set<Listener>();
 
 export function postExtension(message: unknown): void {
-  vscodeApi.postMessage(message);
+  try {
+    vscodeApi.postMessage(message);
+  } catch (error) {
+    // 一条消息发不出去（例如超大状态）不能把异常抛回 React 事件处理链；侧栏要继续可用，
+    // 下一条消息仍然能走。浏览器端端口版曾因为发送失败留下重复通道，这里至少不雪崩。
+    console.warn("opensider: webview postMessage failed", error);
+  }
 }
 
 (globalThis as { __opensiderPost?: (message: unknown) => void }).__opensiderPost = postExtension;

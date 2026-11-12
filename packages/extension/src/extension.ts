@@ -187,7 +187,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       this.webReady = true;
       const queued = this.queue;
       this.queue = [];
-      for (const item of queued) void this.view?.webview.postMessage(item);
+      for (const item of queued) this.postToWebview(item);
       this.pushWorkspace();
       this.pushWindow();
       this.pushSelection();
@@ -504,7 +504,16 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
       this.queue.push(message);
       return;
     }
-    void this.view.webview.postMessage(message);
+    this.postToWebview(message);
+  }
+
+  /** A disposed/reloading webview rejects the send; that must not become an unhandled rejection. */
+  private postToWebview(message: unknown): void {
+    const view = this.view;
+    if (!view) return;
+    void view.webview.postMessage(message).then(undefined, (error: unknown) => {
+      console.warn("opensider: webview postMessage failed", error);
+    });
   }
 
   dispose(): void {
