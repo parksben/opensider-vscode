@@ -4,10 +4,11 @@
 
 ## 0.1.8
 
-A failed webview message no longer breaks the sidebar.
+Archived conversations stay out of the panel until you open them.
 
-- A post that throws, or one sent to a disposed webview, is logged instead of surfacing as an exception or an unhandled rejection.
-- The next message still goes through.
+- Sessions idle for 30 days, or the oldest ones needed to keep the mirrored state under 16MB, are archived automatically every 30 minutes. The transcript stays on disk; only metadata remains in the panel.
+- An "Archived" group at the bottom of the drawer restores a transcript on demand, so old chats no longer slow the view down.
+- A failed webview message no longer breaks the sidebar: a post that throws, or one sent to a disposed webview, is logged and the next message still goes through.
 
 ## 0.1.7
 
