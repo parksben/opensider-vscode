@@ -450,3 +450,74 @@ func readIndex(t *testing.T, path string) map[string]any {
 	}
 	return out
 }
+
+func TestArchiveSessionsKeepsTranscriptFiles(t *testing.T) {
+	home := scratchHome(t)
+	paths.SetWorkspace(filepath.Join(home, "project"), "project", "project")
+	state := map[string]any{
+		"version": 1,
+		"sessions": []any{
+			session("s1", "2026-01-01T00:00:00Z", 1),
+			session("s2", "2026-01-02T00:00:00Z", 1),
+		},
+	}
+	if err := Save(state); err != nil {
+		t.Fatal(err)
+	}
+	path := paths.WorkspaceUIStatePath()
+	file := filepath.Join(filepath.Dir(path), "sessions", "s1.json")
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A session whose body never reached the disk must be refused, not archived.
+	if err := os.Remove(filepath.Join(filepath.Dir(path), "sessions", "s2.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	archivedAt, archived, skipped, err := ArchiveSessions([]string{"s1", "s2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if archivedAt == "" {
+		t.Fatal("no archive timestamp")
+	}
+	if len(archived) != 1 || archived[0] != "s1" {
+		t.Fatalf("archived = %v", archived)
+	}
+	if len(skipped) != 1 || skipped[0] != "s2" {
+		t.Fatalf("skipped = %v", skipped)
+	}
+
+	got, ok := Load()
+	if !ok {
+		t.Fatal("load failed")
+	}
+	byID := map[string]map[string]any{}
+	for _, item := range sessionList(got["sessions"]) {
+		byID[str(item["id"])] = item
+	}
+	if str(byID["s1"]["archivedAt"]) != archivedAt {
+		t.Fatal("s1 is not archived in the index")
+	}
+	if messages, _ := byID["s1"]["messages"].([]any); len(messages) != 0 {
+		t.Fatalf("s1 body stayed in the index: %d messages", len(messages))
+	}
+	if str(byID["s2"]["archivedAt"]) != "" {
+		t.Fatal("s2 was archived without a body file")
+	}
+	after, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("archiving overwrote the transcript file")
+	}
+	body, ok := ReadSessionBody("s1")
+	if !ok {
+		t.Fatal("archived body is not readable")
+	}
+	if messages, _ := body["messages"].([]any); len(messages) != 1 {
+		t.Fatalf("archived body messages: %d", len(messages))
+	}
+}

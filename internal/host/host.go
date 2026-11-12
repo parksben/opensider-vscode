@@ -935,6 +935,13 @@ func (h *Host) dispatch(typ string, msg map[string]any) error {
 	case "ui.state.set":
 		h.acceptStateSet(msg)
 		return nil
+	case "session.archive":
+		// 归档：先确认正文真的在磁盘上，再把正文从索引里摘掉（见 uistate.ArchiveSessions）。
+		h.archiveSessions(str(msg["requestId"]), archiveIDList(msg["ids"]))
+		return nil
+	case "session.restore":
+		h.restoreSessionBody(str(msg["requestId"]), str(msg["id"]))
+		return nil
 	case "workspace.set":
 		return h.setWorkspace(str(msg["cwd"]), str(msg["key"]), str(msg["name"]))
 	case "window.set":

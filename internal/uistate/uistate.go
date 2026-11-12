@@ -328,6 +328,10 @@ func HasHistory(state map[string]any) bool {
 		return false
 	}
 	for _, session := range sessionList(state["sessions"]) {
+		if str(session["archivedAt"]) != "" {
+			// 归档会话只有元数据，但它的正文还在 sessions/<id>.json；不能把它当成空状态。
+			return true
+		}
 		if str(session["acpSessionId"]) != "" {
 			return true
 		}
