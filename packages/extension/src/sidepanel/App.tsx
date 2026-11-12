@@ -18,6 +18,8 @@ import { encodeBase64, fileToBase64, type DropPlan } from "./file-drop";
 import { blobUrlFromBase64Chunks, isAttachedImagePath } from "./image-preview";
 import { activeFileForPrompt, sameActiveFileDisplay, type ActiveFile } from "@shared";
 import { applyAcpUpdate, createUserMessage, usageFromUpdate } from "./acp-messages";
+import { ARCHIVE_CHECK_MS, ARCHIVE_REQUEST_TIMEOUT_MS, ARCHIVE_RETRY_MS, pickSessionsToArchive } from "./archive";
+import { StateChunkSink } from "../state-transfer";
 import { ACTIVE_FILE_EVENT, connectSidebar, TERMINAL_EVENT, WORKSPACE_EVENT } from "./bridge";
 import { changedFilesOf } from "./changed-files";
 import type { ChatMessage, PermissionRequest, PlanPrompt, QuestionPrompt, TodoItem } from "./chat-types";
@@ -68,7 +70,9 @@ import {
   wrapUserPrompt,
   wrapForkContext,
   textOf,
+  restoreSessionBody,
   type AgentMode,
+  type ArchivedSessionBody,
   type LoadedState,
   type Session,
 } from "./persist";
@@ -230,6 +234,24 @@ export function App() {
   // 已经发出去的「用户选中的模式」，避免 Host 推回的旧值把它反复重发。
   const appliedAgentModeRef = useRef("");
   const runningIdsRef = useRef<Set<string>>(new Set());
+  /** 归档检查的节流：hydration + host 镜像就绪后跑第一次，之后每 30 分钟一次。 */
+  const lastArchiveCheckRef = useRef(0);
+  /**
+   * 归档的两段式握手：先 flush 一份当前状态，等 Host 的 `ui.state.saved` 回执确认
+   * 这份状态的正文真的落盘了，再发 `session.archive`。回执 / 归档任一环节失败都重试。
+   */
+  const archiveStageRef = useRef<{
+    phase: "saving" | "requesting";
+    savedAt: string;
+    fingerprint: string;
+    ids: string[];
+    requestId?: string;
+    timer: number;
+  } | null>(null);
+  const archiveRetryRef = useRef(0);
+  /** 正在从 Host 取回的归档正文：requestId → 分片重组器 / 本地会话 id。 */
+  const restoreSinks = useRef(new Map<string, StateChunkSink>());
+  const restoreTargets = useRef(new Map<string, string>());
   const queuesRef = useRef<Record<string, QueuedMessage[]>>({});
   const editingQueueRef = useRef<{ sessionId: string; id: string } | null>(null);
   const flushQueueRef = useRef<(sessionId: string) => void>(() => undefined);
@@ -727,7 +749,7 @@ export function App() {
     }
     if (msg.type === "ui.state") {
       if (!("state" in msg)) {
-        // 分片形态由 SW 重组后才转发（background.ts）；真漏过来的碎片直接忽略。
+        // 分片在 bridge.ts 里已经拼回整条；真漏过来的碎片直接忽略。
         return;
       }
       if (!hydratedRef.current) {
@@ -826,6 +848,98 @@ export function App() {
           regen.attachments,
         );
       }
+      return;
+    }
+    if (msg.type === "session.restore") {
+      const requestId = msg.requestId;
+      if (msg.error) {
+        restoreSinks.current.delete(requestId);
+        restoreTargets.current.delete(requestId);
+        setNotice(t(localeRef.current, "archiveRestoreFailed"));
+        return;
+      }
+      if (
+        typeof requestId !== "string" ||
+        typeof msg.index !== "number" ||
+        typeof msg.total !== "number" ||
+        typeof msg.data !== "string"
+      ) {
+        return;
+      }
+      let sink = restoreSinks.current.get(requestId);
+      if (!sink) {
+        sink = new StateChunkSink();
+        restoreSinks.current.set(requestId, sink);
+      }
+      const joined = sink.push(msg.index, msg.total, msg.data);
+      if (joined === undefined) return;
+      restoreSinks.current.delete(requestId);
+      const localId = restoreTargets.current.get(requestId);
+      restoreTargets.current.delete(requestId);
+      if (!localId) return;
+      const session = sessionsRef.current.find((item) => item.id === localId);
+      if (!session) return;
+      try {
+        const body = JSON.parse(joined) as ArchivedSessionBody;
+        const restored = { ...restoreSessionBody(session, body), updatedAt: new Date().toISOString() };
+        setSessions((current) => current.map((item) => (item.id === localId ? restored : item)));
+        setSelectedId(localId);
+      } catch {
+        setNotice(t(localeRef.current, "archiveRestoreFailed"));
+      }
+      return;
+    }
+    if (msg.type === "ui.state.saved") {
+      const stage = archiveStageRef.current;
+      if (!stage || stage.phase !== "saving" || !msg.savedAt || msg.savedAt !== stage.savedAt) return;
+      if (msg.error) {
+        clearArchiveStage();
+        retryArchiveSoon();
+        return;
+      }
+      // 等回执期间正文又变了：这份镜像不是最新的，重新排一轮，别拿旧回执照样归档。
+      if (runningIdsRef.current.size > 0 || archiveFingerprint(stage.ids) !== stage.fingerprint) {
+        clearArchiveStage();
+        retryArchiveSoon();
+        return;
+      }
+      stage.phase = "requesting";
+      stage.requestId = crypto.randomUUID();
+      sendRef.current({ type: "session.archive", requestId: stage.requestId, ids: stage.ids });
+      return;
+    }
+    if (msg.type === "session.archived") {
+      const stage = archiveStageRef.current;
+      if (!stage || stage.phase !== "requesting" || !msg.requestId || msg.requestId !== stage.requestId) return;
+      clearArchiveStage();
+      if (msg.error) {
+        retryArchiveSoon();
+        return;
+      }
+      const ids = new Set(msg.ids ?? []);
+      // Host 没找到正文文件的（或这一轮一个都没归档成功）：这一轮不清理，过一会儿再试。
+      if (msg.skipped?.length || ids.size === 0) retryArchiveSoon();
+      if (ids.size === 0) return;
+      // 请求在飞的这段时间里正文又被改过：Host 归档的是上一份正文，不能拿它清面板里
+      // 更新的那份（下次 flush 会把新正文写回去，Host 那边也会随之翻回未归档）。
+      if (archiveFingerprint(stage.ids) !== stage.fingerprint) {
+        persistFlush.current();
+        return;
+      }
+      const archivedAt = msg.archivedAt || new Date().toISOString();
+      setSessions((current) =>
+        current.map((session) =>
+          ids.has(session.id)
+            ? {
+                ...session,
+                archivedAt,
+                messages: [],
+                todos: [],
+                pendingForkContext: undefined,
+              }
+            : session,
+        ),
+      );
       return;
     }
     if (msg.type === "agentModes") {
@@ -1162,7 +1276,9 @@ export function App() {
   /** 最近一次写出去的设置指纹：正文在流式、但设置变了时不跟着一起憋着。 */
   const persistSettingsDigest = useRef("");
   /** 立刻写一次（webview 要藏起来时用）：不走合并窗口、也不受「回合进行中」限制。 */
-  const persistFlush = useRef<() => void>(() => undefined);
+  const persistFlush = useRef<() => string | undefined>(() => undefined);
+  /** Host 镜像就绪后强制写一次：否则「镜像就绪」只改依赖、指纹没变，会跳过首次同步。 */
+  const mirrorSeeded = useRef(false);
   /** 任意会话有一轮在跑：正文变化这期间不落盘（流式内容每半秒都在变，写出去是纯浪费）。 */
   const anyTurnRunning = runningIds.length > 0;
 
@@ -1230,6 +1346,8 @@ export function App() {
       });
       persistDigest.current = digest;
       persistSettingsDigest.current = settingsDigest;
+      // 归档流程用它和 Host 的 ui.state.saved 回执配对（见 archiveOldSessions）。
+      return hostMirrorReady ? payload.savedAt : undefined;
     };
     persistFlush.current = write;
     if (digest === persistDigest.current) return;
@@ -1258,6 +1376,107 @@ export function App() {
     deletedSessions,
     shareActiveFile,
   ]);
+
+  // 镜像就绪（含 Host 重连）先补一次整份同步：面板可能只读到了本地热缓存，此前没有
+  // 任何状态变更，指纹没变过——不强制写一次，Host 那边就一直是空的（归档也就没正文可留）。
+  useEffect(() => {
+    if (!hostMirrorReady) {
+      mirrorSeeded.current = false;
+      return;
+    }
+    if (!hydrated || mirrorSeeded.current) return;
+    mirrorSeeded.current = true;
+    persistFlush.current();
+  }, [hostMirrorReady, hydrated]);
+
+  /** 归档请求失败后隔一分钟再试（下一轮定时检查要等 30 分钟，太久了）。 */
+  const retryArchiveSoon = () => {
+    // 这一轮已经记过检查时间；不复位的话重试会被 30 分钟的节流直接挡掉。
+    lastArchiveCheckRef.current = 0;
+    window.clearTimeout(archiveRetryRef.current);
+    archiveRetryRef.current = window.setTimeout(archiveOldSessions, ARCHIVE_RETRY_MS);
+  };
+
+  /** 只覆盖要归档的那几条会话：握手期间正文有没有变过。 */
+  const archiveFingerprint = (ids: string[]) =>
+    JSON.stringify(
+      ids.map((id) => {
+        const session = sessionsRef.current.find((item) => item.id === id);
+        if (!session) return [id, "gone"];
+        return [
+          session.id,
+          session.updatedAt,
+          session.messages.length,
+          session.messages[session.messages.length - 1]?.id ?? "",
+          session.todos.length,
+        ];
+      }),
+    );
+
+  const clearArchiveStage = () => {
+    const stage = archiveStageRef.current;
+    if (stage) window.clearTimeout(stage.timer);
+    archiveStageRef.current = null;
+  };
+
+  /**
+   * 定期把老会话的正文移出面板状态：只留元数据，正文仍在 Host 的 sessions/<id>.json。
+   * 30 天没动过的无条件归档；整份状态估算超过 16MB 时再从老到新归档到 12MB。
+   * 当前选中 / 置顶 / 在跑的会话不动，一轮在跑时也不检查（避免和流式写状态抢）。
+   *
+   * 真正的归档由 Host 落地：面板先把当前状态 flush 一份，等 Host 的落盘回执确认
+   * 正文已经在 sessions/<id>.json 里，才发 session.archive。Host 还会再核对文件，
+   * 所以即使镜像没写过去（Host 刚启动、正文还没落盘），也不会出现「面板清了、
+   * Host 没有」的丢正文。
+   */
+  const archiveOldSessions = () => {
+    if (!hydratedRef.current || runningIdsRef.current.size > 0) return;
+    if (archiveStageRef.current) return;
+    const now = Date.now();
+    if (now - lastArchiveCheckRef.current < ARCHIVE_CHECK_MS) return;
+    lastArchiveCheckRef.current = now;
+    const ids = pickSessionsToArchive({
+      sessions: sessionsRef.current,
+      now,
+      selectedId: selectedIdRef.current,
+      runningIds: runningIdsRef.current,
+    });
+    if (ids.length === 0) return;
+    const savedAt = persistFlush.current();
+    if (!savedAt) return;
+    const timer = window.setTimeout(() => {
+      archiveStageRef.current = null;
+      lastArchiveCheckRef.current = 0;
+      retryArchiveSoon();
+    }, ARCHIVE_REQUEST_TIMEOUT_MS);
+    archiveStageRef.current = {
+      phase: "saving",
+      savedAt,
+      fingerprint: archiveFingerprint(ids),
+      ids,
+      timer,
+    };
+  };
+
+  // 首帧先等一拍：Host 镜像就绪（正文已经写过去）后再检查；turns.running 也要先到，
+  // 避免误归档一条后台在跑的会话。Host 重连后重新走一遍。
+  useEffect(() => {
+    if (!hydrated || !hostMirrorReady) return;
+    const initial = window.setTimeout(archiveOldSessions, 3000);
+    const timer = window.setInterval(archiveOldSessions, ARCHIVE_CHECK_MS);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
+  }, [hydrated, hostMirrorReady]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(archiveRetryRef.current);
+      clearArchiveStage();
+    },
+    [],
+  );
 
   // webview 要藏起来 / 被关掉：合并窗口里那一次可能还没到点，补写一次——否则
   // 「回合进行中不写」会让刚跑完的那一轮卡在内存里。VS Code 的 webview 在切走 /
@@ -1738,6 +1957,23 @@ export function App() {
     }));
   };
 
+  /**
+   * 用户点开一条归档会话：让 Host 从 sessions/<id>.json 读回正文，成功后恢复并选中。
+   * 恢复是显式动作，不会自动发生；失败只提示，会话保持归档。
+   */
+  const restoreArchivedSession = (id: string) => {
+    const session = sessionsRef.current.find((item) => item.id === id);
+    if (!session?.archivedAt) return;
+    if (statusRef.current === "missing" || statusRef.current === "error") {
+      setError(t(localeRef.current, "offlineSend"));
+      setStatus("error");
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    restoreTargets.current.set(requestId, id);
+    sendRef.current({ type: "session.restore", requestId, id });
+  };
+
   const deleteSession = (id: string) => {
     const doomed = sessionsRef.current.find((session) => session.id === id);
     if (doomed && runningIdsRef.current.has(id)) {
@@ -1776,10 +2012,14 @@ export function App() {
   };
 
   const pinSession = (id: string) => {
-    patchSession(id, (session) => ({
-      ...session,
-      pinnedAt: session.pinnedAt ? undefined : new Date().toISOString(),
-    }));
+    patchSession(id, (session) =>
+      session.archivedAt
+        ? session
+        : {
+            ...session,
+            pinnedAt: session.pinnedAt ? undefined : new Date().toISOString(),
+          },
+    );
   };
 
   const sessionBusy = (id: string) => runningIdsRef.current.has(id);
@@ -2078,6 +2318,7 @@ export function App() {
           onRename={renameSession}
           onDelete={deleteSession}
           onPin={pinSession}
+          onRestore={restoreArchivedSession}
           onNewSession={newSession}
           onClose={() => setSessionsOpen(false)}
           onLocale={(next) => {

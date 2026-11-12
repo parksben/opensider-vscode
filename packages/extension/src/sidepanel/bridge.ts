@@ -1,4 +1,5 @@
 import type { ActiveFile, EditorTab, ExtToHost, HostToExt, TerminalState } from "@shared";
+import { StateChunkSink, splitStateText } from "../state-transfer";
 
 type Listener = (msg: HostToExt) => void;
 
@@ -8,6 +9,8 @@ type VsCodeApi = {
 
 const vscodeApi: VsCodeApi = acquireVsCodeApi();
 const listeners = new Set<Listener>();
+/** 宿主把超过单帧上限的 ui.state 分片发过来；这里拼回整条再交给面板。 */
+const uiStateSink = new StateChunkSink();
 
 export function postExtension(message: unknown): void {
   try {
@@ -65,7 +68,19 @@ window.addEventListener("message", (event: MessageEvent) => {
     | undefined;
   if (!data) return;
   if (data.type === "host" && data.message) {
-    emit(data.message);
+    const message = data.message;
+    if (message.type === "ui.state" && "total" in message) {
+      if (typeof message.index !== "number" || typeof message.total !== "number" || typeof message.data !== "string") return;
+      const joined = uiStateSink.push(message.index, message.total, message.data);
+      if (joined === undefined) return;
+      try {
+        emit({ type: "ui.state", state: JSON.parse(joined) as Record<string, unknown> });
+      } catch (error) {
+        console.warn("opensider-vscode: chunked ui.state is not json", error);
+      }
+      return;
+    }
+    emit(message);
     return;
   }
   if (data.type === "selection") {
@@ -130,7 +145,22 @@ export function connectSidebar(onMessage: Listener): {
   listeners.add(onMessage);
   postExtension({ type: "ready" });
   return {
-    send: (msg) => postExtension({ type: "host", message: msg }),
+    send: (msg) => {
+      // 整份状态可能几十 MB：在面板侧就切片，别让一条超大的 webview 消息 + 宿主帧去撞上限。
+      if (msg.type === "ui.state.set" && "state" in msg) {
+        const parts = splitStateText(JSON.stringify(msg.state));
+        if (parts.length > 1) {
+          parts.forEach((data, index) =>
+            postExtension({
+              type: "host",
+              message: { type: "ui.state.set", index, total: parts.length, data },
+            }),
+          );
+          return;
+        }
+      }
+      postExtension({ type: "host", message: msg });
+    },
     reconnect: () => postExtension({ type: "ready" }),
     disconnect: () => listeners.delete(onMessage),
   };
