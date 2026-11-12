@@ -475,7 +475,7 @@ func TestArchiveSessionsKeepsTranscriptFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	archivedAt, archived, skipped, err := ArchiveSessions([]string{"s1", "s2"})
+	archivedAt, archived, skipped, err := ArchiveSessions([]string{"s1", "s2"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,5 +519,35 @@ func TestArchiveSessionsKeepsTranscriptFiles(t *testing.T) {
 	}
 	if messages, _ := body["messages"].([]any); len(messages) != 1 {
 		t.Fatalf("archived body messages: %d", len(messages))
+	}
+}
+
+func TestArchiveSessionsRefusesRunningSessions(t *testing.T) {
+	home := scratchHome(t)
+	paths.SetWorkspace(filepath.Join(home, "project"), "project", "project")
+	state := map[string]any{
+		"version": 1,
+		"sessions": []any{
+			map[string]any{
+				"id":           "s1",
+				"acpSessionId": "acp-1",
+				"updatedAt":    "2026-01-01T00:00:00Z",
+				"messages":     []any{map[string]any{"id": "m1", "role": "user"}},
+			},
+			session("s2", "2026-01-02T00:00:00Z", 1),
+		},
+	}
+	if err := Save(state); err != nil {
+		t.Fatal(err)
+	}
+	_, archived, skipped, err := ArchiveSessions([]string{"s1", "s2"}, map[string]bool{"acp-1": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skipped) != 1 || skipped[0] != "s1" {
+		t.Fatalf("skipped = %v", skipped)
+	}
+	if len(archived) != 1 || archived[0] != "s2" {
+		t.Fatalf("archived = %v", archived)
 	}
 }

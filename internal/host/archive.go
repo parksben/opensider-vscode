@@ -48,6 +48,23 @@ func (h *Host) restoreSessionBody(requestID, id string) {
 	log.Log("session restore " + id)
 }
 
+// runningACPIDs lists the ACP sessions the host is currently prompting. The panel
+// usually knows too, but it can be reopened while a background turn is still going.
+func (h *Host) runningACPIDs() map[string]bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := map[string]bool{}
+	for _, runtime := range h.runtimes {
+		if runtime == nil || runtime.client == nil || !runtime.prompting {
+			continue
+		}
+		if id := runtime.client.GetSessionID(); id != "" {
+			out[id] = true
+		}
+	}
+	return out
+}
+
 // archiveSessions moves a batch of sessions' bodies out of the active index. The
 // panel asks for this only after it has persisted the bodies to the host, but the
 // host still re-checks each body file before dropping it: a session that was never
@@ -56,7 +73,7 @@ func (h *Host) archiveSessions(requestID string, ids []string) {
 	if requestID == "" || len(ids) == 0 {
 		return
 	}
-	archivedAt, archived, skipped, err := uistate.ArchiveSessions(ids)
+	archivedAt, archived, skipped, err := uistate.ArchiveSessions(ids, h.runningACPIDs())
 	reply := map[string]any{
 		"type":      "session.archived",
 		"requestId": requestID,
