@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.1.8
+
+A failed webview message no longer breaks the sidebar.
+
+- A post that throws, or one sent to a disposed webview, is logged instead of surfacing as an exception or an unhandled rejection.
+- The next message still goes through.
+
 ## 0.1.7
 
 The session list stops moving while several sessions run.

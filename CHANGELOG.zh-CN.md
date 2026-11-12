@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.1.8
+
+消息发送失败时，侧栏不再被拖垮。
+
+- Webview 发送失败（例如视图正在销毁）只记录日志，不再把异常抛回 React 事件处理链，也不再产生未处理的 Promise rejection。
+- 后续消息照常发送。
+
 ## 0.1.7
 
 多个会话同时跑时，会话列表不再一直换位。

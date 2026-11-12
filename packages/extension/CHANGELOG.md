@@ -2,6 +2,20 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.1.8
+
+A failed webview message no longer breaks the sidebar.
+
+- A post that throws, or one sent to a disposed webview, is logged instead of surfacing as an exception or an unhandled rejection.
+- The next message still goes through.
+
+## 0.1.7
+
+The session list stops moving while several sessions run.
+
+- Sessions are ordered by when they were created, not by the last update, so a running turn no longer reshuffles the drawer on every streamed chunk.
+- The today / last seven days / older groups follow the creation time too: replying to an old chat no longer moves it into "today".
+
 ## 0.1.6
 
 A running turn survives hiding the OpenSider view.
