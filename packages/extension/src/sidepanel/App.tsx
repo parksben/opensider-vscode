@@ -898,7 +898,11 @@ export function App() {
         return;
       }
       // 等回执期间正文又变了：这份镜像不是最新的，重新排一轮，别拿旧回执照样归档。
-      if (runningIdsRef.current.size > 0 || archiveFingerprint(stage.ids) !== stage.fingerprint) {
+      if (
+        runningIdsRef.current.size > 0 ||
+        !archiveCandidatesStillValid(stage.ids) ||
+        archiveFingerprint(stage.ids) !== stage.fingerprint
+      ) {
         clearArchiveStage();
         retryArchiveSoon();
         return;
@@ -922,7 +926,7 @@ export function App() {
       if (ids.size === 0) return;
       // 请求在飞的这段时间里正文又被改过：Host 归档的是上一份正文，不能拿它清面板里
       // 更新的那份（下次 flush 会把新正文写回去，Host 那边也会随之翻回未归档）。
-      if (archiveFingerprint(stage.ids) !== stage.fingerprint) {
+      if (!archiveCandidatesStillValid(stage.ids) || archiveFingerprint(stage.ids) !== stage.fingerprint) {
         persistFlush.current();
         return;
       }
@@ -1409,9 +1413,22 @@ export function App() {
           session.messages.length,
           session.messages[session.messages.length - 1]?.id ?? "",
           session.todos.length,
+          session.pendingForkContext?.length ?? -1,
         ];
       }),
     );
+
+  /** 握手期间用户可能选中/置顶了其中一条：那就不该再归档它。 */
+  const archiveCandidatesStillValid = (ids: string[]) => {
+    const still = new Set(
+      pickSessionsToArchive({
+        sessions: sessionsRef.current,
+        selectedId: selectedIdRef.current,
+        runningIds: runningIdsRef.current,
+      }),
+    );
+    return ids.every((id) => still.has(id));
+  };
 
   const clearArchiveStage = () => {
     const stage = archiveStageRef.current;
