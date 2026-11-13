@@ -2,6 +2,12 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.2.1
+
+macOS 不再为 Hermes 的 Python 模块弹「无法验证开发者」。
+
+- Host 在启动 ACP server 前对 Hermes 托管运行时（`~/.hermes/tools` / `~/.hermes/installs`）里的 `.so` / `.dylib` / `.node` 补 ad-hoc 签名。这些文件只有不可移除的 `com.apple.provenance`，清 quarantine 没用；有效签名才是 Gatekeeper 放行的条件。
+
 ## 0.2.0
 
 侧栏可以连 Hermes Agent 了，直播中的一轮也不会再让用户消息上下抖。

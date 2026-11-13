@@ -2,6 +2,12 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.2.1
+
+macOS stops asking whether to trust Hermes' Python modules.
+
+- The host ad-hoc signs the managed Hermes runtime (`~/.hermes/tools` and `~/.hermes/installs`) before starting the ACP server. Those modules only carry the protected `com.apple.provenance` attribute, so clearing quarantine could not fix the prompt; a valid signature is what Gatekeeper accepts.
+
 ## 0.2.0
 
 Hermes Agent can now run in the sidebar, and a streaming turn keeps its place.
