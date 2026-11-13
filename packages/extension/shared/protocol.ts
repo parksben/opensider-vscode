@@ -187,6 +187,7 @@ export type AgentMark =
   | "iflow"
   | "trae"
   | "qoder"
+  | "hermes"
   | "generic"
   | "agents"
   | "codex"
