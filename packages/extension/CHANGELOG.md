@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.2.0
+
+Hermes Agent can now run in the sidebar, and a streaming turn keeps its place.
+
+- OpenSider detects Hermes' ACP server (`hermes-acp` / `hermes acp`), shows its models, reasoning-effort option and edit-approval modes, and maps the ask / accept-edits / don't-ask levels to the permission policy.
+- While a turn streams, the live area keeps a minimum height so the user's message stays put; the next message releases the previous stage.
+
 ## 0.1.8
 
 Archived conversations stay out of the panel until you open them.

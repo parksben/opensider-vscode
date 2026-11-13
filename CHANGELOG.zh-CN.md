@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.2.0
+
+侧栏可以连 Hermes Agent 了，直播中的一轮也不会再让用户消息上下抖。
+
+- 自动探测 Hermes 的 ACP server（`hermes-acp` / `hermes acp`），读取它的模型、推理档位与编辑审批模式，并把「每次问 / 自动过编辑 / 不再问」映射到权限档。
+- 一轮运行中给直播舞台一个最小高度，用户消息保持不动；下一轮用户消息发出后释放上一轮的舞台。
+
 ## 0.1.8
 
 归档的会话不再拖慢侧栏，点开就能取回。
