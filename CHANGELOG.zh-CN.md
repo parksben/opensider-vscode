@@ -2,11 +2,18 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.2.2
+
+macOS 不再为 Hermes 的文本解码模块弹「无法验证开发者」。
+
+- Host 在启动 Hermes 前把 `charset_normalizer` 的原生 `cd` / `md` 模块移出导入路径，让 Python 使用包自带的纯 Python 回退。仅补 ad-hoc 签名不够：这些 uv 安装的模块带受保护的 provenance 属性，macOS 26 仍会拒绝。
+- uv 解包缓存也一并处理，从缓存新建的环境不会再把弹窗带回来。
+
 ## 0.2.1
 
 macOS 不再为 Hermes 的 Python 模块弹「无法验证开发者」。
 
-- Host 在启动 ACP server 前对 Hermes 托管运行时（`~/.hermes/tools` / `~/.hermes/installs`）里的 `.so` / `.dylib` / `.node` 补 ad-hoc 签名。这些文件只有不可移除的 `com.apple.provenance`，清 quarantine 没用；有效签名才是 Gatekeeper 放行的条件。
+- Host 在启动 ACP server 前对 Hermes 托管运行时（`~/.hermes/tools` / `~/.hermes/installs`）里的 `.so` / `.dylib` / `.node` 补 ad-hoc 签名。这能修复只是缺签名的文件；macOS 26 仍会拒绝带 provenance 的 `charset_normalizer` 原生模块，0.2.2 已改为避开它们。
 
 ## 0.2.0
 

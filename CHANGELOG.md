@@ -2,11 +2,18 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.2.2
+
+macOS stops prompting for Hermes' text-decoding modules.
+
+- The host moves `charset_normalizer`'s native `cd`/`md` modules aside before Hermes starts, so Python uses the package's pure-Python fallbacks. Ad-hoc signing was not enough: macOS 26 still denied those uv-installed modules because of their protected provenance attribute.
+- The uv archive cache is covered too, so an environment built from cache no longer brings the prompt back.
+
 ## 0.2.1
 
 macOS stops asking whether to trust Hermes' Python modules.
 
-- The host ad-hoc signs the managed Hermes runtime (`~/.hermes/tools` and `~/.hermes/installs`) before starting the ACP server. Those modules only carry the protected `com.apple.provenance` attribute, so clearing quarantine could not fix the prompt; a valid signature is what Gatekeeper accepts.
+- The host ad-hoc signs the managed Hermes runtime (`~/.hermes/tools` and `~/.hermes/installs`) before starting the ACP server. This fixes files whose only problem was a missing signature; macOS 26 still denies the provenance-marked `charset_normalizer` native modules, which 0.2.2 now avoids.
 
 ## 0.2.0
 
