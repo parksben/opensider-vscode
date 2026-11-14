@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.2.3
+
+macOS 不再为临时 Agent 环境里的文本解码模块弹「无法验证开发者」。
+
+- Host 现在会把 TMPDIR、OpenSider 工作区和 `VIRTUAL_ENV` 下 venv 里的 `charset_normalizer` 原生 `cd` / `md` 模块移出导入路径，不再只处理 Hermes 托管运行时。
+- Agent 会话运行期间会轻量复查这些 venv，任务中新建的环境也能覆盖到。
+
 ## 0.2.2
 
 macOS 不再为 Hermes 的文本解码模块弹「无法验证开发者」。

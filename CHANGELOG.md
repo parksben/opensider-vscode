@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.2.3
+
+macOS stops prompting for text-decoding modules in temporary Agent environments.
+
+- The host now disables `charset_normalizer`'s native `cd`/`md` modules in venvs under TMPDIR, the OpenSider workspace, and `VIRTUAL_ENV`, not only in Hermes' managed runtime.
+- A lightweight guard rechecks those venvs while an Agent session runs, so an environment created during a task is covered too.
+
 ## 0.2.2
 
 macOS stops prompting for Hermes' text-decoding modules.
