@@ -385,6 +385,11 @@ export type HostToExt =
   | { type: "prompt.busy"; requestId: string; sessionId?: string }
   /** Injecting into the running turn failed; the panel requeues the message. */
   | { type: "prompt.steerFailed"; requestId: string; sessionId?: string; reason?: string }
+  /**
+   * 注入成功：Agent 已经确认接手这条引导消息。面板据此把「还没被读到」的标记摘掉，
+   * 之后到达的输出才开始渲染在那条用户消息之后。
+   */
+  | { type: "prompt.steerAccepted"; requestId: string; sessionId?: string }
   | { type: "models"; models: AgentModel[]; currentId: string }
   | {
       type: "agentModes";

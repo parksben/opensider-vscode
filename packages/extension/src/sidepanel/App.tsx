@@ -257,6 +257,9 @@ export function App() {
   const flushSteerHoldRef = useRef<(sessionId: string) => void>(() => undefined);
   const steerAvailableRef = useRef(false);
   const holdClaims = useRef<Set<string>>(new Set());
+  /** 已注入、等 Agent 确认接手的引导消息：requestId → 那条消息。 */
+  const steerOutbox = useRef(new Map<string, { localId: string; messageId: string }>());
+  const clearSteerAwaitingRef = useRef<(sessionId: string) => void>(() => undefined);
 
   const sendToSessionRef = useRef<(localId: string, text: string, attachments?: AttachmentItem[]) => void>(
     () => undefined,
@@ -361,6 +364,7 @@ export function App() {
       ...(skillPrefix ? { skillPrefix } : {}),
       ...(currentFile ? { currentFile } : {}),
     });
+    return requestId;
   };
 
   const tryBindCurrent = () => {
@@ -682,7 +686,10 @@ export function App() {
   };
 
   const finishAllTurns = () => {
-    for (const id of [...runningIdsRef.current]) finishTurn(id);
+    for (const id of [...runningIdsRef.current]) {
+      finishTurn(id);
+      clearSteerAwaitingRef.current(id);
+    }
   };
 
   // The visible result of a manual "check for updates": checking → a newer version opens the
@@ -717,6 +724,7 @@ export function App() {
     // never turns into a queue card). Mark it as waiting again, and if the turn it was
     // aimed at is already gone, deliver it right away as the next turn.
     if (meta?.steer) {
+      steerOutbox.current.delete(requestId);
       if (!wasRunning) {
         const next = new Set(runningIdsRef.current);
         next.add(localId);
@@ -728,7 +736,9 @@ export function App() {
           ?.messages.some((item) => item.id === meta.messageId);
         if (exists) {
           updateSessionMessages(localId, (current) =>
-            current.map((item) => (item.id === meta.messageId ? { ...item, pending: true } : item)),
+            current.map((item) =>
+              item.id === meta.messageId ? { ...item, pending: true, awaitingSteer: false } : item,
+            ),
           );
         }
       }
@@ -1170,6 +1180,7 @@ export function App() {
         settleSupersededTurn(localId);
       } else {
         finishTurn(localId);
+        clearSteerAwaiting(localId);
         // 队列优先（队列模式的消息先到先发）；队列为空时再把引导模式下挂着的那条
         // 「等待中」消息作为新一轮发出。
         if (!takeFromQueue(localId)) flushSteerHoldRef.current(localId);
@@ -1177,6 +1188,15 @@ export function App() {
       if (msg.stopReason === "error" && !msg.interrupted && localId === selectedIdRef.current) {
         setError(msg.error?.trim() || t(localeRef.current, "turnError"));
       }
+      return;
+    }
+    if (msg.type === "prompt.steerAccepted") {
+      const entry = steerOutbox.current.get(msg.requestId);
+      if (!entry) return;
+      steerOutbox.current.delete(msg.requestId);
+      updateSessionMessages(entry.localId, (current) =>
+        current.map((item) => (item.id === entry.messageId ? { ...item, awaitingSteer: false } : item)),
+      );
       return;
     }
     if (msg.type === "prompt.busy" || msg.type === "prompt.steerFailed") {
@@ -1665,7 +1685,7 @@ export function App() {
       if (!bindRegistry.current.hasLocal(localId)) requestSession("new", localId);
       return;
     }
-    sendPrompt(
+    const requestId = sendPrompt(
       localId,
       session.acpSessionId,
       context ? `${wrapForkContext(context)}\n\n${body}` : body,
@@ -1675,6 +1695,14 @@ export function App() {
       attachments,
       { messageId: user.id, userText: text, userAttachments: attachments, steer: options.steer },
     );
+    // 引导消息在 Agent 确认接手之前不切分上面那一轮的回答（见 assistant-append 的
+    // lastAssistant）；收到 prompt.steerAccepted 才摘掉这个标记。
+    if (options.steer && user.role === "user") {
+      steerOutbox.current.set(requestId, { localId, messageId: user.id });
+      updateSessionMessages(localId, (current) =>
+        current.map((item) => (item.id === user.id ? { ...item, awaitingSteer: true } : item)),
+      );
+    }
   };
 
   // 「立即发送」：运行中只走 native steering；不能 steer 时保留这条并挪到队首，
@@ -1751,6 +1779,19 @@ export function App() {
     }
     holdSteerMessage(localId, text, attachments);
   };
+
+  /** 这一轮结束（或断开）后不再有输出属于任何「还没被读到」的消息，统一摘标记。 */
+  const clearSteerAwaiting = (sessionId: string) => {
+    for (const [requestId, entry] of steerOutbox.current) {
+      if (entry.localId === sessionId) steerOutbox.current.delete(requestId);
+    }
+    updateSessionMessages(sessionId, (current) =>
+      current.some((item) => item.awaitingSteer)
+        ? current.map((item) => (item.awaitingSteer ? { ...item, awaitingSteer: false } : item))
+        : current,
+    );
+  };
+  clearSteerAwaitingRef.current = clearSteerAwaiting;
 
   /** Show the message now, deliver it when the running turn ends. */
   const holdSteerMessage = (localId: string, text: string, attachments: AttachmentItem[] = []) => {
