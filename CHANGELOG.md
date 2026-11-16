@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.15
+
+Tool calls show up while the agent is working, not only after the turn ends.
+
+- The step currently on stays on screen with its output until the next one starts, so a 400ms tool no longer flashes past empty.
+- Thinking, tool and terminal titles can be collapsed mid-run — before, a click did nothing while the turn was running.
+- The steer/queue menu now says what each mode does.
+
 ## 0.3.14
 
 Steering now waits until the agent has actually read your message.
