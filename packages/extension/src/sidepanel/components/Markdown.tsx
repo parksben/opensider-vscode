@@ -35,7 +35,7 @@ export const Markdown = memo(
     // 「约 2~3 个工作日…再 2~3 个工作日」这类文案整段划掉。关掉单波浪号后这类内容
     // 原样输出，`~~删掉~~` 仍然生效。
     return (
-      <div className="markdown prose">
+      <div className="markdown">
         <ReactMarkdown
           remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
           components={{
