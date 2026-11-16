@@ -315,6 +315,7 @@ function ChatScene() {
             onSend={noop}
             steerAvailable={false}
             onSteer={noop}
+            onDeletePending={noop}
             onEnqueue={noop}
             onUpdateQueued={noop}
             onDeleteQueued={noop}
@@ -383,6 +384,7 @@ function ChatBody({
           onSend={noop}
           steerAvailable={false}
           onSteer={noop}
+          onDeletePending={noop}
           onEnqueue={noop}
           onUpdateQueued={noop}
           onDeleteQueued={noop}

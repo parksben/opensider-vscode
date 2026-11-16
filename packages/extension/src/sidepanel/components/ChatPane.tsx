@@ -1,6 +1,6 @@
 import type { ActiveFile, AgentInfo, AgentModeOption, AgentModel, AgentOption, AgentProgress, AttachmentItem, ChangedFile, ContextUsage as ContextUsageValue, FsPickMode, SkillItem, TerminalState } from "@shared";
 import { openChangeDiff, postExtension, PIN_EVENT, SELECTION_EVENT } from "../bridge";
-import { ArrowDown, AtSign, Check, ChevronDown, ChevronRight, Copy, Cpu, File, FileDown, Folder, FolderPen, GitFork, Globe, Lightbulb, LoaderCircle, Paperclip, Plus, RefreshCw, Send, Shield, Slash, Square, TriangleAlert, Unlock, X, Zap } from "lucide-react";
+import { ArrowDown, AtSign, Check, ChevronDown, ChevronRight, Copy, Cpu, Clock3, File, FileDown, Folder, FolderPen, GitFork, Globe, Lightbulb, LoaderCircle, Paperclip, Plus, RefreshCw, Send, Shield, Slash, Square, Trash2, TriangleAlert, Unlock, X, Zap } from "lucide-react";
 import logoUrl from "../../../assets/icon.svg?url";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { ChatMessage, ChatPart, TodoItem } from "../chat-types";
@@ -16,7 +16,7 @@ import { groupModelsByPrefix, modelGroupLabel, modelShortName } from "../model-g
 import { requestBrowserProbe } from "../peer-probe";
 import { STICKY_PX, useThreadFollow } from "../thread-follow";
 import { toolFinished } from "../tool-status";
-import { nextStage, stageVisible, type StageState } from "../turn-stage";
+import { lastSettled, nextStage, stageVisible, type StageState } from "../turn-stage";
 import {
   composerCarryMatches,
   decodeComposerCarry,
@@ -84,6 +84,7 @@ export function ChatPane({
   showModelPicker,
   onSend,
   onEnqueue,
+  onDeletePending,
   onUpdateQueued,
   onDeleteQueued,
   onSendQueuedNow,
@@ -168,6 +169,7 @@ export function ChatPane({
   queue: QueuedMessage[];
   steerAvailable: boolean;
   onSteer: (text: string, attachments: AttachmentItem[]) => void;
+  onDeletePending: (messageId: string) => void;
   onSend: (text: string, attachments: AttachmentItem[]) => void;
   onEnqueue: (text: string, attachments: AttachmentItem[]) => void;
   onUpdateQueued: (id: string, text: string, attachments: AttachmentItem[]) => void;
@@ -475,7 +477,9 @@ export function ChatPane({
     if (reviseId) onRevise(reviseId, text, files);
     else if (queueEditId) onUpdateQueued(queueEditId, text, files);
     else if (isRunning) {
-      if (steerAvailable && sendMode === "steer" && files.length === 0) onSteer(text, files);
+      // 引导模式：消息一律上屏（能注入就注入当前轮，注入不了就挂着等本轮结束）。
+      // 只有队列模式才进队列卡片。
+      if (sendMode === "steer" && steerAvailable) onSteer(text, files);
       else onEnqueue(text, files);
     } else onSend(text, files);
     requestAnimationFrame(() => stickToBottom());
@@ -836,6 +840,7 @@ export function ChatPane({
               onPreview={openPreview}
               onFork={onFork}
               onRegenerate={onRegenerate}
+              onDeletePending={onDeletePending}
               onContinue={(messageId) => {
                 const cut = handoffCutoff(messages, messageId);
                 if (!cut) return;
@@ -1238,6 +1243,7 @@ const MessageThread = memo(function MessageThread({
   onFork,
   onRegenerate,
   onContinue,
+  onDeletePending,
 }: {
   locale: Locale;
   sessionId: string;
@@ -1250,24 +1256,27 @@ const MessageThread = memo(function MessageThread({
   onFork: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onContinue: (messageId: string) => void;
+  onDeletePending: (messageId: string) => void;
 }) {
   // The live turn keeps a minimum-height stage until the next user message; see turn-stage.ts.
   const stageRef = useRef<StageState | undefined>(undefined);
   const stage = nextStage(stageRef.current, sessionId, messages, isRunning);
   stageRef.current = stage;
   const stagedId = stageVisible(messages, stage.id) ? stage.id : undefined;
-  const awaitingStage = isRunning && messages[messages.length - 1]?.role === "user";
+  // 挂着「等待」的引导消息不算已发送：舞台与直播态要按最后一条真正发出去的消息判断。
+  const settledLast = lastSettled(messages);
+  const awaitingStage = isRunning && settledLast?.role === "user";
   return (
     <>
       {messages.map((message, index) => {
         const gap = index === 0 ? "" : message.role === "user" ? "mt-6" : "mt-3";
         return message.role === "user" ? (
-          <div key={message.id} data-thread-anchor="" className={`flex justify-end ${gap}`}>
+          <div key={message.id} data-thread-anchor="" className={`flex flex-col items-end ${gap}`}>
             <div
-              role={isRunning ? undefined : "button"}
-              tabIndex={isRunning ? undefined : 0}
+              role={message.pending || isRunning ? undefined : "button"}
+              tabIndex={message.pending || isRunning ? undefined : 0}
               onClick={() => {
-                if (isRunning) return;
+                if (isRunning || message.pending) return;
                 // A click that ended a text selection is the user copying, not asking to
                 // edit. Dragging across the bubble fires a click too, which used to wipe
                 // the selection and jump into edit mode.
@@ -1276,7 +1285,7 @@ const MessageThread = memo(function MessageThread({
                 onStartEdit(message);
               }}
               onKeyDown={(event) => {
-                if (isRunning) return;
+                if (isRunning || message.pending) return;
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   onStartEdit(message);
@@ -1285,7 +1294,7 @@ const MessageThread = memo(function MessageThread({
               className={`cs-user-bubble ml-auto w-fit max-w-[80%] break-words rounded-2xl rounded-br-sm bg-[var(--user)] px-3 py-2 text-left text-[13.5px] leading-[1.5] ${
                 editingId === message.id
                   ? "ring-1 ring-[var(--brass)]"
-                  : isRunning
+                  : isRunning || message.pending
                     ? "cursor-default"
                     : "cursor-pointer hover:bg-[var(--user-hover)]"
               }`}
@@ -1302,6 +1311,21 @@ const MessageThread = memo(function MessageThread({
                 />
               ) : null}
             </div>
+            {message.pending ? (
+              <div className="mt-1 flex items-center gap-1 pr-0.5 text-[11px] text-[var(--muted)]">
+                <Clock3 size={12} aria-hidden />
+                <span>{t(locale, "pendingSteer")}</span>
+                <RippleButton
+                  type="button"
+                  title={t(locale, "deletePending")}
+                  aria-label={t(locale, "deletePending")}
+                  onClick={() => onDeletePending(message.id)}
+                  className="rounded p-0.5 hover:text-[var(--text)]"
+                >
+                  <Trash2 size={12} />
+                </RippleButton>
+              </div>
+            ) : null}
           </div>
         ) : (
           <MessageFrame
@@ -1309,7 +1333,7 @@ const MessageThread = memo(function MessageThread({
             locale={locale}
             locked={isRunning}
             stage={message.id === stagedId}
-            hideActions={isRunning && message.id === messages[messages.length - 1]?.id}
+            hideActions={isRunning && message.id === settledLast?.id}
             className={gap}
             modelLabel={
               message.modelName ||
@@ -1324,7 +1348,7 @@ const MessageThread = memo(function MessageThread({
             <AssistantMessage
               locale={locale}
               content={message.content}
-              live={isRunning && message.durationMs == null && message.id === messages[messages.length - 1]?.id}
+              live={isRunning && message.durationMs == null && message.id === settledLast?.id}
               durationMs={message.durationMs}
             />
           </MessageFrame>
