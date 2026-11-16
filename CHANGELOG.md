@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.6
+
+The steer pill sits beside the permission pill instead of across the row.
+
+- While a turn runs, the steer pill appears flush after the permission pill in the composer footer, with no horizontal gap between them.
+- The context usage ring stays alone on the right, so the footer keeps its left cluster together.
+
 ## 0.3.5
 
 Composer pills go flat, and the stage says "Thinking" until the first frame arrives.
