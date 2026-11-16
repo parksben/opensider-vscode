@@ -7,3 +7,4 @@ dist
 packages/extension/bin/opensider-vscode-host
 packages/extension/bin/opensider-vscode-host.exe
 dist-release
+dist-release-new
