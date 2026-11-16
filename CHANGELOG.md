@@ -2,6 +2,12 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.1
+
+Queue "Send now" uses steering when the message can be steered.
+
+- A text-only queued message now goes straight into the running turn (Hermes `/steer`); attachments, skills, and Agents without native steering keep the interrupt-and-resend fallback.
+
 ## 0.3.0
 
 Running turns can be steered, and the queue remains an explicit choice.

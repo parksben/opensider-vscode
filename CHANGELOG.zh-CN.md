@@ -2,6 +2,12 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.1
+
+队列的「立即发送」在消息可 steering 时直接注入当前 turn。
+
+- 纯文本队列消息直接走 steering（Hermes `/steer`）；带附件、skill 或 Agent 不支持 native steering 时，仍回退到取消当前 turn 后重发。
+
 ## 0.3.0
 
 运行中的一轮可以 steering，消息队列仍保留为显式选项。
