@@ -237,24 +237,14 @@ function Frame({ selected, children }: { selected: boolean; children: ReactNode 
   );
 }
 
-function PanelHeader(props: {
-  status: "idle" | "ready";
-  agents: AgentInfo[];
-  selectedProviderId: string;
-  showAgentSelect: boolean;
-  sessionTitle: string;
-}) {
+function PanelHeader(props: { status: "idle" | "ready"; sessionTitle: string }) {
   return (
     <Header
       locale={locale}
       status={props.status}
-      agents={props.agents}
-      selectedProviderId={props.selectedProviderId}
-      showAgentSelect={props.showAgentSelect}
       sessionTitle={props.sessionTitle}
       sessionsOpen={false}
       onToggleSessions={noop}
-      onSelectAgent={noop}
     />
   );
 }
@@ -266,13 +256,7 @@ function SetupScene({ agents }: { agents: AgentInfo[] }) {
   return (
     <Frame selected={false}>
       <div className="shot-column">
-        <PanelHeader
-          status="idle"
-          agents={agents}
-          selectedProviderId=""
-          showAgentSelect={false}
-          sessionTitle=""
-        />
+        <PanelHeader status="idle" sessionTitle="" />
         <div className="shot-body">
           <AgentSetup
             locale={locale}
@@ -314,13 +298,7 @@ function ChatScene() {
   return (
     <Frame selected>
       <div className="shot-column">
-        <PanelHeader
-          status="ready"
-          agents={FOUND}
-          selectedProviderId="codex"
-          showAgentSelect
-          sessionTitle={COPY[locale].title}
-        />
+        <PanelHeader status="ready" sessionTitle={COPY[locale].title} />
         <div className="shot-body">
           <ChatPane
             locale={locale}
@@ -331,6 +309,9 @@ function ChatScene() {
             models={MODELS}
             modelId="gpt-5.4"
             showModelPicker
+            agents={FOUND}
+            selectedProviderId="codex"
+            onSelectAgent={noop}
             onSend={noop}
             steerAvailable={false}
             onSteer={noop}
@@ -385,13 +366,7 @@ function ChatBody({
 }) {
   return (
     <div className="shot-column">
-      <PanelHeader
-        status="ready"
-        agents={FOUND}
-        selectedProviderId="codex"
-        showAgentSelect
-        sessionTitle={sessionTitle}
-      />
+      <PanelHeader status="ready" sessionTitle={sessionTitle} />
       <div className="shot-body">
         <ChatPane
           locale={locale}
@@ -402,6 +377,9 @@ function ChatBody({
           models={MODELS}
           modelId="gpt-5.4"
           showModelPicker
+          agents={FOUND}
+          selectedProviderId="codex"
+          onSelectAgent={noop}
           onSend={noop}
           steerAvailable={false}
           onSteer={noop}
