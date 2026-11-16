@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.9
+
+Steering and queueing are now decided by the send mode alone.
+
+- In steer mode a message sent during a run stays in the transcript: text-only messages are injected into the running turn, while messages with attachments (or a skill, or an Agent without steering) show a "Waiting for the agent" line and go out as the next turn.
+- Queue cards only appear in queue mode; a steer that arrives as the turn ends is sent immediately instead of being moved into the queue.
+- The send-mode pill tooltip now reads "Message send mode: Steer / Queue".
+
 ## 0.3.8
 
 The transcript keeps its usual look, and a single `~` is no longer read as strikethrough.
