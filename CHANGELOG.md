@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.14
+
+Steering now waits until the agent has actually read your message.
+
+- While a steering message is buffered, the answer keeps streaming above it and the message is marked "Steering".
+- Once the agent finishes a tool batch and starts talking again, that continuation appears below the message.
+- Steers sent before the session is ready now wait their turn instead of quietly replacing the first message.
+
 ## 0.3.13
 
 Copy images straight out of the preview.
