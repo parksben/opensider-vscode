@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.7
+
+Transcript Markdown gets a real heading hierarchy, and single tildes stop turning into strikethrough.
+
+- Markdown is typeset with Tailwind Typography, themed to the panel: headings step down 20 / 16 / 14.5 / 13.5 px, the document title gets a hairline, and quotes, lists, rules and tables keep proper spacing.
+- A single `~` stays literal ("约 2~3 个工作日 … 再 2~3 个工作日" is no longer erased), while `~~…~~` still strikes.
+- Inline code no longer carries backticks.
+
 ## 0.3.6
 
 The steer pill sits beside the permission pill instead of across the row.
