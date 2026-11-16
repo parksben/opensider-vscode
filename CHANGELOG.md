@@ -4,9 +4,10 @@
 
 ## 0.3.1
 
-Queue "Send now" uses steering when the message can be steered.
+Queue "Send now" steers while a turn is running and never interrupts it.
 
-- A text-only queued message now goes straight into the running turn (Hermes `/steer`); attachments, skills, and Agents without native steering keep the interrupt-and-resend fallback.
+- A text-only queued message goes straight into the running turn (Hermes `/steer`).
+- Attachments, skills, and Agents without native steering keep the message at the head of the queue and send it after the current turn ends. Sending no longer cancels the running turn.
 
 ## 0.3.0
 

@@ -4,9 +4,10 @@
 
 ## 0.3.1
 
-队列的「立即发送」在消息可 steering 时直接注入当前 turn。
+队列的「立即发送」在运行中只走 steering，不再打断当前 turn。
 
-- 纯文本队列消息直接走 steering（Hermes `/steer`）；带附件、skill 或 Agent 不支持 native steering 时，仍回退到取消当前 turn 后重发。
+- 纯文本队列消息直接注入当前一轮（Hermes `/steer`）。
+- 带附件、skill 或 Agent 不支持 native steering 时，消息保留在队首，等当前轮正常结束后自动发出；任何发送都不再取消正在执行的一轮。
 
 ## 0.3.0
 
