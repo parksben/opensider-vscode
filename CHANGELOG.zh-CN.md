@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.11
+
+运行中连发的消息现在严格按顺序处理。
+
+- 前一条还在等待时，后发的消息也一起等，不会再插队先被 Agent 执行。
+- 本轮结束后，攒下的消息按输入顺序拼成一条一起发出。
+
 ## 0.3.10
 
 运行中发出的消息现在会「排队等着」，输出顺序跟 Copilot 一致。

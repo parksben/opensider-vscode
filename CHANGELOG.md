@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.11
+
+Messages you type while the agent is busy now stay in order.
+
+- A message typed behind one that is still waiting waits too, instead of sneaking into the running turn ahead of it.
+- When the turn ends, everything that piled up goes out as a single prompt in the order you wrote it.
+
 ## 0.3.10
 
 A message sent while the agent is working now waits its turn on screen.
