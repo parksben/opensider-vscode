@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.10
+
+运行中发出的消息现在会「排队等着」，输出顺序跟 Copilot 一致。
+
+- Agent 还没读到你那条引导消息时，它的回答继续长在消息上面；确认接手之后，后续输出才接到消息下面。
+- 带附件 / skill 这类没法直接注入的消息同样如此：先挂在原位并显示「等待 Agent 处理」，本轮结束后作为新一轮发出。
+
 ## 0.3.9
 
 运行中发消息走引导还是队列，只看当前的消息发送模式。

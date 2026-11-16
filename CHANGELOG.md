@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.10
+
+A message sent while the agent is working now waits its turn on screen.
+
+- While the agent has not read your steer message yet, its answer keeps streaming above it; once the agent accepts the message, the rest of the answer continues below it.
+- Messages that cannot be steered (attachments, skills) wait in place with a "Waiting for the agent" line and go out as the next turn.
+
 ## 0.3.9
 
 Steering and queueing are now decided by the send mode alone.
