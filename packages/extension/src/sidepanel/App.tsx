@@ -306,6 +306,8 @@ export function App() {
     setDrawerWidth(state.sessionDrawerWidth);
     setDeletedSessions(state.deletedSessions);
     setShareActiveFile(state.shareActiveFile);
+    queuesRef.current = state.queues;
+    setQueues(state.queues);
     loadedRef.current = { ...state, sessions: nextSessions, selectedId: nextSelectedId };
     // 会话列表被整表替换（host 镜像灌回）：悬挂的请求可能指向已不存在的本地会话，清掉。
     bindRegistry.current.clear();
@@ -1319,6 +1321,7 @@ export function App() {
       drawerWidth,
       deletedSessions,
       shareActiveFile,
+      queues,
     ]);
     const transcriptDigest = JSON.stringify(
       sessions.map((session) => [
@@ -1353,6 +1356,7 @@ export function App() {
         sessions,
         deletedSessions,
         shareActiveFile,
+        queues,
       });
       // 先把整份状态序列化 + 写本地缓存；再发 Host 镜像。写失败（配额等）只打警告，
       // 绝不能连镜像一起停掉——重装后的恢复靠的就是它（见 persist.saveState）。
@@ -1392,6 +1396,7 @@ export function App() {
     sessions,
     deletedSessions,
     shareActiveFile,
+    queues,
   ]);
 
   // 镜像就绪（含 Host 重连）先补一次整份同步：面板可能只读到了本地热缓存，此前没有

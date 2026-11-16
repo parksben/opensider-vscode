@@ -2,6 +2,7 @@ import type { AttachmentItem, SkillItem } from "@shared";
 import type { ChatMessage, ChatPart, TodoItem } from "./chat-types";
 import { detectBrowserLocale, readCachedLocale, type Locale } from "./i18n";
 import { displayMentionText, leadingSkillNames, stripLeadingSkills, wrapUserMentions } from "./mentions";
+import type { QueuedMessage } from "./queued-message";
 import { isBenignStreamCloseText, stripBenignStreamClose } from "./stream-close";
 import { stampToolParts } from "./tool-label";
 import { detectBrowserTheme, isThemePreference, readCachedTheme, type ThemePreference } from "./theme";
@@ -153,6 +154,8 @@ export type PersistedState = {
   onboardingCompleted?: boolean;
   sessionsOpen?: boolean;
   sessionDrawerWidth?: number;
+  /** Unsent messages per local session id. Absent on states written before queues persisted. */
+  queues?: Record<string, QueuedMessage[]>;
   sessions: Array<Omit<Session, "messages"> & { messages: StoredMessage[] }>;
   /**
    * Sessions the user deleted, id → ISO time.
@@ -465,6 +468,7 @@ export type LoadedState = {
   sessions: Session[];
   deletedSessions: Record<string, string>;
   shareActiveFile: boolean;
+  queues: Record<string, QueuedMessage[]>;
 };
 
 function migrateSessionBindings(session: Session, providerId: string): Session {
@@ -496,7 +500,41 @@ function emptyLoaded(savedAt?: string): LoadedState {
     sessions: [],
     deletedSessions: {},
     shareActiveFile: false,
+    queues: {},
   };
+}
+
+function isAttachmentItem(value: unknown): value is AttachmentItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.path === "string" && item.path.length > 0 && typeof item.name === "string";
+}
+
+/** Restore only queue entries that still belong to a live session and carry usable content. */
+function hydrateQueues(raw: unknown, sessions: Session[]): Record<string, QueuedMessage[]> {
+  if (!raw || typeof raw !== "object") return {};
+  const live = new Set(sessions.map((session) => session.id));
+  const result: Record<string, QueuedMessage[]> = {};
+  for (const [sessionId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!live.has(sessionId) || !Array.isArray(value)) continue;
+    const items: QueuedMessage[] = [];
+    for (const entry of value) {
+      if (!entry || typeof entry !== "object") continue;
+      const item = entry as Record<string, unknown>;
+      const text = typeof item.text === "string" ? item.text : "";
+      const attachments = Array.isArray(item.attachments)
+        ? item.attachments.filter(isAttachmentItem)
+        : [];
+      if (!text.trim() && attachments.length === 0) continue;
+      items.push({
+        id: typeof item.id === "string" && item.id ? item.id : `queue-${Date.now()}-${items.length}`,
+        text,
+        attachments,
+      });
+    }
+    if (items.length > 0) result[sessionId] = items;
+  }
+  return result;
 }
 
 export function fromPersisted(data: PersistedState | undefined | null): LoadedState {
@@ -534,6 +572,7 @@ export function fromPersisted(data: PersistedState | undefined | null): LoadedSt
     sessions,
     deletedSessions: data.deletedSessions ?? {},
     shareActiveFile: data.shareActiveFile === true,
+    queues: hydrateQueues(data.queues, sessions),
   };
 }
 
@@ -558,6 +597,7 @@ export function toPersistedState(state: {
   sessions: Session[];
   deletedSessions: Record<string, string>;
   shareActiveFile: boolean;
+  queues: Record<string, QueuedMessage[]>;
 }): PersistedState {
   return {
     version: 1,
@@ -574,6 +614,7 @@ export function toPersistedState(state: {
     onboardingCompleted: state.onboardingCompleted || undefined,
     sessionsOpen: state.sessionsOpen,
     sessionDrawerWidth: clampSessionDrawerWidth(state.sessionDrawerWidth),
+    ...(Object.keys(state.queues).length ? { queues: state.queues } : {}),
     sessions: state.sessions.map(serializeSession),
     deletedSessions: Object.keys(state.deletedSessions).length ? state.deletedSessions : undefined,
     shareActiveFile: state.shareActiveFile || undefined,
