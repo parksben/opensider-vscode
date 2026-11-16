@@ -3,7 +3,6 @@ import { openChangeDiff, postExtension, PIN_EVENT, SELECTION_EVENT } from "../br
 import { ArrowDown, AtSign, Check, ChevronDown, ChevronRight, Copy, Cpu, Clock3, File, FileDown, Folder, FolderPen, GitFork, Globe, Lightbulb, LoaderCircle, Paperclip, Plus, RefreshCw, Send, Shield, Slash, Square, Trash2, TriangleAlert, Unlock, X, Zap } from "lucide-react";
 import logoUrl from "../../../assets/icon.svg?url";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import type { ChatMessage, ChatPart, TodoItem } from "../chat-types";
 import { useComposerHistory } from "../composer-history";
 import { COMPOSER_ICON_PX, MODEL_MENU_MAX_PX, MODEL_MENU_SAFE_PX, MODEL_NARROW_MAX_PX } from "../layout";
@@ -57,6 +56,7 @@ import { ContinueDialog } from "./ContinueDialog";
 import { IconButton } from "./IconButton";
 import { kindIcon, UserRichText } from "./MentionChip";
 import { Markdown } from "./Markdown";
+import { ContextMenu } from "./ContextMenu";
 import { ImagePreview } from "./ImagePreview";
 import { ActiveFileChip, pathLeaf } from "./ActiveFileChip";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -375,33 +375,8 @@ export function ChatPane({
   };
 
   const openMessageMenu = (message: ChatMessage, x: number, y: number) => {
-    // 简单夹一下，别让菜单掉到视口外。
-    const width = 168;
-    const height = 36;
-    setMessageMenu({
-      message,
-      x: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
-      y: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
-    });
+    setMessageMenu({ message, x, y });
   };
-
-  useEffect(() => {
-    if (!messageMenu) return;
-    const close = () => setMessageMenu(null);
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [messageMenu]);
 
   /** A paste whose text is exactly what was copied: bring the attachments along, once. */
   const restoreCarriedAttachments = (pastedText: string) => {
@@ -1251,26 +1226,21 @@ export function ChatPane({
         )}
         </div>
       </div>
-      {messageMenu
-        ? createPortal(
-            <div
-              style={{ top: messageMenu.y, left: messageMenu.x }}
-              className="fixed z-[90] min-w-[10.5rem] overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] py-1 shadow-xl"
-              onPointerDown={(event) => event.stopPropagation()}
-              role="menu"
-            >
-              <RippleButton
-                role="menuitem"
-                onClick={() => copyMessage(messageMenu.message)}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12.5px] text-[var(--text)]"
-              >
-                <Copy size={13} className="shrink-0 text-[var(--muted)]" />
-                {t(locale, "copyMessage")}
-              </RippleButton>
-            </div>,
-            document.body,
-          )
-        : null}
+      {messageMenu ? (
+        <ContextMenu
+          x={messageMenu.x}
+          y={messageMenu.y}
+          onClose={() => setMessageMenu(null)}
+          items={[
+            {
+              id: "copy-message",
+              label: t(locale, "copyMessage"),
+              icon: <Copy size={13} />,
+              onSelect: () => copyMessage(messageMenu.message),
+            },
+          ]}
+        />
+      ) : null}
       {preview ? (
         <ImagePreview
           locale={locale}
