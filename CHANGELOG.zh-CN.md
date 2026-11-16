@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.2
+
+输入框的控制项统一到外侧底部操作行。
+
+- 发送方式、Agent 模式、权限三个控件改为同款下拉 pill，并移到输入框下方的单独一行；发送方式不再是分段按钮。
+- 上下文用量环右对齐放在同一行；输入框工具栏保留附件、`@`、`/`、模型、推理档位、停止与发送。
+
 ## 0.3.1
 
 队列的「立即发送」在运行中只走 steering，不再打断当前 turn。

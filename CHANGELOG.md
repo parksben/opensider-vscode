@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.2
+
+Composer controls move into a footer row below the input.
+
+- Send mode, Agent mode, and permission are now matching dropdown pills in a separate row under the composer; the send-mode Steer/Queue control is no longer a segmented switch.
+- The context usage ring sits at the right edge of that row. The input toolbar keeps attachments, mentions, skills, model, reasoning effort, stop, and send.
+
 ## 0.3.1
 
 Queue "Send now" steers while a turn is running and never interrupts it.
