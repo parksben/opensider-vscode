@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.3
+
+Composer footer spacing and durable queues.
+
+- The footer row now keeps a 6px gap below the composer; the 12px gap to the viewport edge is unchanged.
+- Unsent queue messages now survive window reloads and reconnects, including text, attachments, and order.
+
 ## 0.3.2
 
 Composer controls move into a footer row below the input.

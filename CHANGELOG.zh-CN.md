@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.3
+
+输入框底部操作行间距与队列持久化。
+
+- 操作行与输入框之间改为 6px，与视口底边的 12px 保持不变。
+- 未执行的队列消息现在能跨窗口重载 / 重连恢复，正文、附件和顺序都保留。
+
 ## 0.3.2
 
 输入框的控制项统一到外侧底部操作行。
