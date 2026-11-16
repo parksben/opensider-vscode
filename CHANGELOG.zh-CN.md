@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.8
+
+消息列表样式保持不变，单个波浪号不再被当成删除线。
+
+- 消息、计划卡、划词结果的渲染与之前一致。
+- 「约 2~3 个工作日 … 再 2~3 个工作日」原样输出，只有 `~~…~~` 才渲染删除线。
+
 ## 0.3.7
 
 消息里的 Markdown 有了真正的标题层级，单个波浪号不再被当成删除线。

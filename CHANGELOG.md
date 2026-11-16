@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.8
+
+The transcript keeps its usual look, and a single `~` is no longer read as strikethrough.
+
+- Chat messages, plan cards and selection results render exactly as before.
+- "约 2~3 个工作日 … 再 2~3 个工作日" stays as written; only `~~…~~` strikes.
+
 ## 0.3.7
 
 Transcript Markdown gets a real heading hierarchy, and single tildes stop turning into strikethrough.
