@@ -29,7 +29,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Header } from "./components/Header";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { UninstallDialog } from "./components/UninstallDialog";
-import { COMPACT_MAIN_PX, COMPOSER_ACTION_FLAT_PX, ICON_ONLY_MAIN_PX, MODEL_NARROW_MAIN_PX } from "./layout";
+import { COMPOSER_ACTION_FLAT_PX, ICON_ONLY_MAIN_PX, MODEL_NARROW_MAIN_PX } from "./layout";
 import { PermissionBar } from "./components/PermissionBar";
 import { SessionDrawer } from "./components/SessionDrawer";
 import { applyLocale, detectBrowserLocale, readCachedLocale, writeCachedLocale, t, type Locale } from "./i18n";
@@ -136,8 +136,7 @@ export function App() {
   const checkWatchdogRef = useRef(0);
   const checkResetRef = useRef(0);
   const [drawerWidth, setDrawerWidth] = useState(SESSION_DRAWER_DEFAULT);
-  const [compact, setCompact] = useState(false);
-  // 两个下拉（模式 / 权限）是否已收成纯图标。与 compact 分开：下拉该早收，其余布局不必跟着早改版。
+  // 底部操作行那几个下拉是否已收成纯图标。它们比别的控件更早没地方，所以单独一个阈值。
   const [iconOnly, setIconOnly] = useState(false);
   // ≤MODEL_NARROW_MAIN_PX：模型下拉的最大宽度收到 1/3。
   const [modelNarrow, setModelNarrow] = useState(false);
@@ -1539,7 +1538,6 @@ export function App() {
     const node = mainColumnRef.current;
     if (!node) return;
     const update = () => {
-      setCompact(node.clientWidth < COMPACT_MAIN_PX);
       setIconOnly(node.clientWidth <= ICON_ONLY_MAIN_PX);
       setModelNarrow(node.clientWidth <= MODEL_NARROW_MAIN_PX);
       setActionFlat(node.clientWidth >= COMPOSER_ACTION_FLAT_PX);
@@ -2191,7 +2189,6 @@ export function App() {
           status={status}
           error={error}
           progress={progress}
-          compact={compact}
           sessionTitle={selected.title}
           sessionsOpen={sessionsOpen}
           updateAvailable={
