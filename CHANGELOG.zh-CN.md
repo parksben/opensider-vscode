@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.0
+
+运行中的一轮可以 steering，消息队列仍保留为显式选项。
+
+- 一轮运行中，输入区默认走 steering：Enter 把消息注入当前 turn（Hermes 的 `/steer`），不再等下一轮；旁边的「引导 / 队列」切换可以显式选择排队。
+- 带附件或 skill 的消息、以及不支持 native steering 的 Agent，仍走原有队列；队列的编辑、删除、立即发送都保持不变。
+
 ## 0.2.3
 
 macOS 不再为临时 Agent 环境里的文本解码模块弹「无法验证开发者」。

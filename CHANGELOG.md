@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.0
+
+Running turns can be steered, and the queue remains an explicit choice.
+
+- While a turn is running, the composer defaults to steering: Enter sends the message into the current turn (Hermes `/steer`) instead of waiting. A Steer/Queue switch lets you queue the next message explicitly.
+- Messages with attachments or skills, and Agents without native steering, keep the existing queue behavior; queue edit, remove and Send now still work.
+
 ## 0.2.3
 
 macOS stops prompting for text-decoding modules in temporary Agent environments.
