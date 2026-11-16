@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.4
+
+The Agent switch moves into the composer, and connecting no longer shifts it.
+
+- Agent, model, and reasoning-effort pills now sit together on the left of the input toolbar; only send stays on the right.
+- While the host connects, the row under the input becomes the connection progress with cancel. That row keeps the same height, so the input box never moves when switching Agents.
+
 ## 0.3.3
 
 Composer footer spacing and durable queues.

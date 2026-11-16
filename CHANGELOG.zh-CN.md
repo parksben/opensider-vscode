@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.4
+
+Agent 切换搬进输入框，连接中输入框不再跳动。
+
+- Agent、模型、推理档位三颗下拉统一到输入框工具行左侧，右侧只剩发送。
+- Host 连接中时，输入框下方那一行换成连接进度与取消；这一行高度不变，切换 Agent 前后输入框位置完全一致。
+
 ## 0.3.3
 
 输入框底部操作行间距与队列持久化。
