@@ -2,6 +2,14 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.5
+
+Composer pills go flat, and the stage says "Thinking" until the first frame arrives.
+
+- Agent, model, and reasoning-effort pills now match the footer pills: icon plus label, no border, no capsule background, and no chevron until you hover or open them.
+- Pills sit flush with each other, and the steer pill moved to the right so it leads the context ring.
+- After you send, the stage holds a spinner with a "Thinking" label until the first streamed frame replaces it.
+
 ## 0.3.4
 
 The Agent switch moves into the composer, and connecting no longer shifts it.
