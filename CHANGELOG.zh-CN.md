@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.12
+
+已发出的消息可以整条复制，附件一起带走。
+
+- 在自己的消息上右键选「复制完整内容」：正文进剪贴板，附件也一起记住。
+- 粘到输入框里，正文和附件芯片一起还原。
+
 ## 0.3.11
 
 运行中连发的消息现在严格按顺序处理。

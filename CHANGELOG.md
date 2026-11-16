@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.12
+
+Copy a message you already sent, attachments included.
+
+- Right-click any of your messages and pick "Copy message": the text goes to the clipboard and its attachments ride along.
+- Paste it into the input box and the attachment chips come back with the text.
+
 ## 0.3.11
 
 Messages you type while the agent is busy now stay in order.
