@@ -199,6 +199,8 @@ export type AgentCaps = {
   questions: boolean;
   plans: boolean;
   todos: boolean;
+  /** The Agent can absorb a message into its running turn (native steering). */
+  steer: boolean;
 };
 
 export type AgentInfo = {
@@ -297,6 +299,11 @@ export type ExtToHost =
       /** Editor selections shown as chips on the user's message. */
       attachments?: CodeAttachment[];
       /**
+       * Steering: inject this message into the running turn instead of starting
+       * a new one. The host only accepts it when the Agent advertises caps.steer.
+       */
+      steer?: boolean;
+      /**
        * The file the user was looking at when they hit send. The host turns it into a
        * one-line `[Current file]` block, and drops it when `attachments` already pin
        * that exact range.
@@ -376,6 +383,8 @@ export type HostToExt =
   | { type: "turn.end"; stopReason: string; sessionId?: string; error?: string; interrupted?: boolean }
   /** The host refused this prompt: the session is already running. The panel requeues it. */
   | { type: "prompt.busy"; requestId: string; sessionId?: string }
+  /** Injecting into the running turn failed; the panel requeues the message. */
+  | { type: "prompt.steerFailed"; requestId: string; sessionId?: string; reason?: string }
   | { type: "models"; models: AgentModel[]; currentId: string }
   | {
       type: "agentModes";

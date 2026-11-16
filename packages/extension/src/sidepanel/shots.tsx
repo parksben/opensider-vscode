@@ -27,7 +27,7 @@ const locale: Locale = params.get("lang") === "zh" ? "zh" : "en";
 applyLocale(locale);
 applyResolvedTheme("dark");
 
-const caps = { models: true, questions: true, plans: true, todos: true };
+const caps = { models: true, questions: true, plans: true, todos: true, steer: false };
 
 function agent(id: string, name: string, mark: AgentInfo["mark"]): AgentInfo {
   return { id, name, mark, installed: true, caps };
@@ -332,6 +332,8 @@ function ChatScene() {
             modelId="gpt-5.4"
             showModelPicker
             onSend={noop}
+            steerAvailable={false}
+            onSteer={noop}
             onEnqueue={noop}
             onUpdateQueued={noop}
             onDeleteQueued={noop}
@@ -401,6 +403,8 @@ function ChatBody({
           modelId="gpt-5.4"
           showModelPicker
           onSend={noop}
+          steerAvailable={false}
+          onSteer={noop}
           onEnqueue={noop}
           onUpdateQueued={noop}
           onDeleteQueued={noop}

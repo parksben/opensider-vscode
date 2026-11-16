@@ -334,6 +334,7 @@ export function App() {
     sessionId: string,
     text: string,
     interrupt = false,
+    steer = false,
     skillPrefix = "",
     attachments: AttachmentItem[] = [],
     meta?: { messageId?: string; userText?: string; userAttachments?: AttachmentItem[] },
@@ -352,6 +353,7 @@ export function App() {
       sessionId,
       requestId,
       interrupt,
+      ...(steer ? { steer } : {}),
       ...(skillPrefix ? { skillPrefix } : {}),
       ...(currentFile ? { currentFile } : {}),
     });
@@ -572,6 +574,9 @@ export function App() {
     [sessions, selectedId],
   );
 
+  const selectedAgent = agents.find((agent) => agent.id === selectedProviderId);
+  const steerAvailable = selectedAgent?.caps.steer === true;
+
   /**
    * 最近一轮写过的工作区文件。
    *
@@ -695,6 +700,34 @@ export function App() {
       checkPendingRef.current = false;
       flashCheckState("failed");
     }, CHECK_WATCHDOG_MS);
+  };
+
+  const requeueRejectedPrompt = (requestId: string, steerFailure: boolean) => {
+    const ticket = bindRegistry.current.take(requestId);
+    if (!ticket || ticket.kind !== "prompt") return;
+    const localId = ticket.localId;
+    const wasRunning = runningIdsRef.current.has(localId);
+    if (!wasRunning && !steerFailure) {
+      const next = new Set(runningIdsRef.current);
+      next.add(localId);
+      syncRunning(next);
+    }
+    const meta = ticket.meta;
+    if (!meta?.messageId) return;
+    const session = sessionsRef.current.find((item) => item.id === localId);
+    if (!session?.messages.some((item) => item.id === meta.messageId)) return;
+    updateSessionMessages(localId, (current) => current.filter((item) => item.id !== meta.messageId));
+    if (typeof meta.userText === "string") {
+      const item: QueuedMessage = {
+        id: crypto.randomUUID(),
+        text: meta.userText,
+        attachments: meta.userAttachments ?? [],
+      };
+      setSessionQueue(localId, [...(queuesRef.current[localId] ?? []), item]);
+    }
+    // A steering request can lose the race with turn.end; there is no future
+    // turn.end to flush the queue then, so send it as a normal prompt now.
+    if (steerFailure && !wasRunning) flushQueueRef.current(localId);
   };
 
   const handleHost = (msg: HostToExt) => {
@@ -843,6 +876,7 @@ export function App() {
           ticket.localId,
           msg.sessionId,
           regen.context ? `${wrapForkContext(regen.context)}\n\n${body}` : body,
+          false,
           false,
           skillPrefix,
           regen.attachments,
@@ -1116,32 +1150,11 @@ export function App() {
       }
       return;
     }
-    if (msg.type === "prompt.busy") {
-      // The host refused this prompt because the session is already running. Pull the
-      // message that just went on screen back into the queue and keep the running state;
-      // it is sent again when the current turn ends. Silently dropping it used to leave
-      // the old turn's late output under the new message.
-      const ticket = bindRegistry.current.take(msg.requestId);
-      if (!ticket || ticket.kind !== "prompt") return;
-      const localId = ticket.localId;
-      if (!runningIdsRef.current.has(localId)) {
-        const next = new Set(runningIdsRef.current);
-        next.add(localId);
-        syncRunning(next);
-      }
-      const meta = ticket.meta;
-      if (!meta?.messageId) return;
-      const session = sessionsRef.current.find((item) => item.id === localId);
-      if (!session?.messages.some((item) => item.id === meta.messageId)) return;
-      updateSessionMessages(localId, (current) => current.filter((item) => item.id !== meta.messageId));
-      if (typeof meta.userText === "string") {
-        const item: QueuedMessage = {
-          id: crypto.randomUUID(),
-          text: meta.userText,
-          attachments: meta.userAttachments ?? [],
-        };
-        setSessionQueue(localId, [...(queuesRef.current[localId] ?? []), item]);
-      }
+    if (msg.type === "prompt.busy" || msg.type === "prompt.steerFailed") {
+      // The host refused this prompt because the session is already running, or
+      // native steering failed. Pull the message that just went on screen back
+      // into the queue; it is sent again when the current turn ends.
+      requeueRejectedPrompt(msg.requestId, msg.type === "prompt.steerFailed");
       return;
     }
     if (msg.type === "permission") {
@@ -1588,7 +1601,7 @@ export function App() {
     localId: string,
     text: string,
     attachments: AttachmentItem[] = [],
-    options: { interrupt?: boolean } = {},
+    options: { interrupt?: boolean; steer?: boolean } = {},
   ) => {
     if (!localId) return;
     const session = sessionsRef.current.find((item) => item.id === localId);
@@ -1604,7 +1617,8 @@ export function App() {
       patchSession(session.id, (item) => ({ ...item, pendingForkContext: undefined }));
     }
     const { skillPrefix, body } = wrapUserPrompt(text, attachments, skillsRef.current);
-    beginTurn(localId);
+    // Steering belongs to the current running turn; do not reset its start time.
+    if (!options.steer || !runningIdsRef.current.has(localId)) beginTurn(localId);
     setError(undefined);
     if (!session?.acpSessionId) {
       pendingRegen.current.set(localId, { text, attachments, context });
@@ -1616,6 +1630,7 @@ export function App() {
       session.acpSessionId,
       context ? `${wrapForkContext(context)}\n\n${body}` : body,
       options.interrupt,
+      options.steer,
       skillPrefix,
       attachments,
       { messageId: user.id, userText: text, userAttachments: attachments },
@@ -1653,6 +1668,25 @@ export function App() {
     if (!sessionId) return;
     const item: QueuedMessage = { id: crypto.randomUUID(), text, attachments };
     setSessionQueue(sessionId, [...(queuesRef.current[sessionId] ?? []), item]);
+  };
+
+  /**
+   * Running-turn submit: steer the active turn when the Agent supports it.
+   * Attachments and skills are not safe to inject through the text-only
+   * `/steer` command, so they keep the queue semantics.
+   */
+  const onSteer = (text: string, attachments: AttachmentItem[] = []) => {
+    const localId = selectedIdRef.current;
+    if (!localId) return;
+    if (attachments.length > 0) {
+      onEnqueue(text, attachments);
+      return;
+    }
+    if (wrapUserPrompt(text, attachments, skillsRef.current).skillPrefix) {
+      onEnqueue(text, attachments);
+      return;
+    }
+    sendToSession(localId, text, [], { steer: true });
   };
 
   const onUpdateQueued = (id: string, text: string, attachments: AttachmentItem[]) => {
@@ -2256,6 +2290,8 @@ export function App() {
               notice={notice}
               onDismissNotice={() => setNotice(undefined)}
               queue={queues[selected.id] ?? []}
+              steerAvailable={steerAvailable}
+              onSteer={onSteer}
               onEnqueue={onEnqueue}
               onUpdateQueued={onUpdateQueued}
               onDeleteQueued={onDeleteQueued}

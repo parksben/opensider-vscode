@@ -32,6 +32,11 @@ type acpRuntime struct {
 	client    *acp.Client
 	prompting bool
 	binding   bool
+	// steer is true only for Agents that advertise native mid-turn steering
+	// (currently Hermes' `/steer`).
+	steer bool
+	// steerMu serializes multiple steering messages on the same session.
+	steerMu sync.Mutex
 
 	// prepared 是连接时预建的会话（见 openPrepared）。Agent 自己的模式只在会话
 	// 建立时才被广告，挂在侧栏那次绑定上会让模式下拉迟到（用户报过：连接/切 Agent
@@ -623,6 +628,10 @@ func (h *Host) interruptRunning(runtime *acpRuntime) bool {
 
 // endPrompt 收尾一轮：清 prompting、取出并复位 interrupted、把 turnDone 交出去关闭。
 func (h *Host) endPrompt(runtime *acpRuntime) (bool, chan struct{}) {
+	// A steer RPC must finish before the turn is marked idle. Otherwise a steer
+	// request can race turn.end and be treated as a fresh prompt by the Agent.
+	runtime.steerMu.Lock()
+	defer runtime.steerMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	runtime.prompting = false
@@ -669,6 +678,12 @@ func (h *Host) attachClient(runtime *acpRuntime) error {
 		Profile: agent.Profile,
 	}, acp.Handlers{
 		OnUpdate: func(update map[string]any, sessionID string) {
+			// Hermes answers `/steer` with a short agent_message_chunk ack. It is
+			// transport feedback, not part of the answer; dropping it keeps the
+			// user's transcript clean (the steering message itself is already local).
+			if runtime.steer && isSteerAck(update) {
+				return
+			}
 			if runtime.binding && !runtime.prompting {
 				h.absorbSessionUpdate(update, runtime)
 				return
@@ -732,6 +747,9 @@ func (h *Host) attachClient(runtime *acpRuntime) error {
 	client.SetPinnedMode(pinned)
 	client.SetPinnedOptions(pinnedOptions)
 	runtime.client = client
+	h.mu.Lock()
+	runtime.steer = agent.Profile.Caps.Steer
+	h.mu.Unlock()
 	return nil
 }
 
@@ -1153,6 +1171,74 @@ func unsupportedReply(command string, msg map[string]any) map[string]any {
 	}
 }
 
+// trySteer routes a message into the current ACP turn when the selected Agent
+// advertises native steering. It returns false when this is not a steering
+// request or the session is no longer running, so the normal prompt path can
+// take over.
+func (h *Host) trySteer(msg map[string]any) bool {
+	if msg["steer"] != true {
+		return false
+	}
+	sessionID := str(msg["sessionId"])
+	runtime := h.runtimeBySession(sessionID)
+	if runtime == nil || !h.isPrompting(runtime) {
+		return false
+	}
+	h.mu.Lock()
+	steerable := runtime.steer
+	h.mu.Unlock()
+	requestID := str(msg["requestId"])
+	if !steerable {
+		h.sendSteerFailure(requestID, sessionID, "unsupported")
+		return true
+	}
+	h.runSteer(runtime, requestID, str(msg["text"]))
+	return true
+}
+
+func (h *Host) runSteer(runtime *acpRuntime, requestID, text string) {
+	runtime.steerMu.Lock()
+	defer runtime.steerMu.Unlock()
+	sessionID := runtime.client.GetSessionID()
+	if strings.TrimSpace(text) == "" || !h.isPrompting(runtime) {
+		h.sendSteerFailure(requestID, sessionID, "turn-ended")
+		return
+	}
+	log.Log("steer requested " + sessionID)
+	stop, err := runtime.client.Steer(text)
+	if err != nil {
+		log.Log("steer failed " + sessionID + ": " + err.Error())
+		h.sendSteerFailure(requestID, sessionID, "error")
+		return
+	}
+	log.Log("steer accepted " + sessionID + " stop=" + stop)
+}
+
+func isSteerAck(update map[string]any) bool {
+	if str(update["sessionUpdate"]) != "agent_message_chunk" {
+		return false
+	}
+	text := ""
+	switch content := update["content"].(type) {
+	case string:
+		text = content
+	case map[string]any:
+		text = str(content["text"])
+	}
+	text = strings.TrimSpace(text)
+	return strings.HasPrefix(text, "⏩ Steer queued for the active turn:") ||
+		strings.HasPrefix(text, "No active turn — queued for the next turn.")
+}
+
+func (h *Host) sendSteerFailure(requestID, sessionID, reason string) {
+	h.send(map[string]any{
+		"type":      "prompt.steerFailed",
+		"requestId": requestID,
+		"sessionId": sessionID,
+		"reason":    reason,
+	})
+}
+
 func (h *Host) handlePrompt(msg map[string]any) error {
 	h.mu.Lock()
 	ready := len(h.runtimes) > 0
@@ -1162,6 +1248,9 @@ func (h *Host) handlePrompt(msg map[string]any) error {
 	}
 	sessionID := str(msg["sessionId"])
 	requestID := str(msg["requestId"])
+	if msg["steer"] == true && h.trySteer(msg) {
+		return nil
+	}
 	// 「立即发送」带上了 interrupt：先把旧一轮停下来并等它真的收尾，再走下面的
 	// 绑定 / 开跑流程。顺序必须由 Host 来定 —— 侧栏自己等 turn.end 再发的话，
 	// 只要那一轮没能正常返回（cancel 打空、ACP 会话 id 漂了），新消息就永远发不出去。
