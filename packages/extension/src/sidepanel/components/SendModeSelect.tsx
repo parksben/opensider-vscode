@@ -7,8 +7,8 @@ import { useRipple } from "../useRipple";
 import { RippleButton } from "./RippleButton";
 
 const OPTIONS = [
-  { id: "steer", icon: Crosshair, label: "steerMode" },
-  { id: "queue", icon: ListOrdered, label: "queueMode" },
+  { id: "steer", icon: Crosshair, label: "steerMode", hint: "steerModeHint" },
+  { id: "queue", icon: ListOrdered, label: "queueMode", hint: "queueModeHint" },
 ] as const;
 
 /**
@@ -77,7 +77,9 @@ export function SendModeSelect({
         ))}
       </button>
       {open ? (
-        <div className="absolute bottom-full left-0 z-[80] mb-1.5 w-40 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] py-1 shadow-xl">
+        // 与权限下拉同规：两行（名称 + 一句说明）。这一钮是行内第三个，面板最窄时
+        // left-0 起排的 16rem 会顶出右边界，所以宽度再按视口夹一次。
+        <div className="absolute bottom-full left-0 z-[80] mb-1.5 w-64 max-w-[calc(100vw-4rem)] overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] py-1 shadow-xl">
           {OPTIONS.map((option) => {
             const Icon = option.icon;
             const active = option.id === mode;
@@ -88,12 +90,21 @@ export function SendModeSelect({
                   onMode(option.id);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] ${
-                  active ? "bg-[var(--hover-strong)] text-[var(--text)]" : "text-[var(--muted)]"
+                className={`flex w-full flex-col items-start gap-0.5 px-2.5 py-1.5 text-left ${
+                  active ? "bg-[var(--hover-strong)]" : ""
                 }`}
               >
-                <Icon size={COMPOSER_ICON_PX} />
-                {t(locale, option.label)}
+                <span
+                  className={`flex items-center gap-1.5 text-[12px] ${
+                    active ? "text-[var(--text)]" : "text-[var(--muted)]"
+                  }`}
+                >
+                  <Icon size={COMPOSER_ICON_PX} className="shrink-0" />
+                  {t(locale, option.label)}
+                </span>
+                <span className="pl-[22px] text-[11px] leading-snug text-[var(--muted)]">
+                  {t(locale, option.hint)}
+                </span>
               </RippleButton>
             );
           })}
