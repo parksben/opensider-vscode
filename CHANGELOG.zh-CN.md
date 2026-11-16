@@ -2,6 +2,13 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.13
+
+图片预览可以直接复制图片内容。
+
+- 在预览里右键选「复制图片」：进剪贴板的是图片本身，不是路径。
+- 顶部会闪一行「已复制」；预览打开时 `⌘/Ctrl + C` 等价于同一次复制。
+
 ## 0.3.12
 
 已发出的消息可以整条复制，附件一起带走。

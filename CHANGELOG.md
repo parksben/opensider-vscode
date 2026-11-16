@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.13
+
+Copy images straight out of the preview.
+
+- Right-click an image in the preview and pick "Copy image" — the picture itself lands on the clipboard, not its path.
+- A short "Copied" line confirms it, and Cmd/Ctrl+C inside the preview does the same.
+
 ## 0.3.12
 
 Copy a message you already sent, attachments included.
