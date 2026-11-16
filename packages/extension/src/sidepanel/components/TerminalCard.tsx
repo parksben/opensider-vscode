@@ -64,16 +64,19 @@ export function TerminalCard({
     ? terminal.running
     : !toolFinished(part) && !superseded;
   const exitCode = terminal?.exitCode;
-  const [pinned, setPinned] = useState(false);
+  // `override` 是用户自己的选择，压过默认值：运行中默认展开是给我们看清输出用的，
+  // 不是不让用户收起（以前 open 恒为 `live || pinned`，点了只能把它设成 true，
+  // 于是「点标题收起」这个动作在流式期间完全无效）。
+  const [override, setOverride] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!live) setPinned(false);
+    if (!live) setOverride(null);
   }, [live]);
 
-  // While the turn runs the card is only ever rendered while it is the running step (the
-  // live branch drops it the moment it finishes); it stays expanded so the output is
-  // visible. After the turn it folds back to its header line unless the user opened it.
-  const expanded = Boolean(live) || pinned;
+  // While the turn runs the card is only ever rendered while it is the newest step, and it
+  // opens itself so the output is visible — unless the reader closed it, which wins. After
+  // the turn it folds back to its header line.
+  const expanded = override ?? Boolean(live);
 
   // Follow the tail while it runs, the way a terminal does — but only while the user has
   // not scrolled up to read what already went past. The verdict is recomputed on scroll by
@@ -117,7 +120,7 @@ export function TerminalCard({
         </span>
         <button
           type="button"
-          onClick={() => setPinned((value) => !value)}
+          onClick={() => setOverride(!expanded)}
           aria-expanded={expanded}
           className="flex min-w-0 flex-1 items-center gap-1 text-left"
         >

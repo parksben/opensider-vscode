@@ -2,6 +2,7 @@ import type { ContextUsage } from "@shared";
 import type { ChatMessage, ChatPart, ToolPart, ToolStatus } from "./chat-types";
 import { isBenignStreamCloseText, stripBenignStreamClose } from "./stream-close";
 import { lastAssistant } from "./assistant-append";
+import { acpToolOutput } from "./tool-content";
 import { withPrimaryArg } from "./tool-label";
 
 function id(): string {
@@ -70,6 +71,20 @@ function terminalIdOf(update: Record<string, unknown>): string | undefined {
     if (record.type === "terminal" && typeof record.terminalId === "string") return record.terminalId;
   }
   return undefined;
+}
+
+/**
+ * The plain text of a tool's output, when its `content` is nothing but text.
+ *
+ * Hermes never sends `rawOutput` — the output arrives as text blocks in the update that
+ * closes the tool — so a card that only reads `rawOutput` shows nothing at all. It is
+ * surfaced as `result` **and** kept in `content`, so the diff / terminal cards keep the
+ * structure they need. Structured blocks (a diff, a terminal id) deliberately return
+ * undefined here: those belong to `content` alone.
+ */
+function textOfContent(content: unknown): string | undefined {
+  const out = acpToolOutput(content);
+  return typeof out === "string" ? out : undefined;
 }
 
 function isDiffContentItem(item: unknown): boolean {
@@ -161,7 +176,10 @@ export function applyAcpUpdate(
       ...current,
       toolName: update.title ? String(update.title) : current.toolName,
       args: update.rawInput ?? update.input ?? current.args,
-      result: update.rawOutput !== undefined ? update.rawOutput : current.result,
+      result:
+        update.rawOutput !== undefined
+          ? update.rawOutput
+          : (textOfContent(update.content) ?? current.result),
       content: update.content !== undefined ? mergeToolContent(current.content, update.content) : current.content,
       status: (update.status as ToolStatus | undefined) ?? current.status,
       kind: update.kind ? String(update.kind) : current.kind,
