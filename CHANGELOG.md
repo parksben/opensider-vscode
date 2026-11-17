@@ -2,6 +2,13 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.16
+
+A reconnect no longer rewrites the agent you picked, or the answer that is still streaming.
+
+- The host pushes its state mirror on every reconnect, and that copy is almost always older than the panel: a running turn's body is not persisted, and a large state takes seconds to land. It is now only restored when the panel has nothing yet — previously every reconnect reverted a fresh agent switch and wiped the running answer.
+- Clicking the agent that is already connected repairs the display instead of doing nothing, and `ready` takes the connected provider from the host rather than trusting a selection the stale mirror may have rewritten.
+
 ## 0.3.15
 
 Tool calls show up while the agent is working, not only after the turn ends.
