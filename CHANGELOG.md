@@ -2,6 +2,11 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.17
+
+Unread steering messages no longer show a misleading new-turn thinking placeholder.
+Queue “Send now” interrupts the active turn when steering is unavailable, preserves remaining messages in order, and returns busy-rejected prompts to the front.
+
 ## 0.3.16
 
 A reconnect no longer rewrites the agent you picked, or the answer that is still streaming.

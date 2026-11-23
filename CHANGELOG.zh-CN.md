@@ -2,6 +2,11 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.17
+
+引导消息尚未被 Agent 读取时，不再显示误导性的「思考中」占位。
+Agent 不支持引导时，队列「立即发送」会中断当前轮；剩余消息保持顺序，Host 忙碌拒绝的消息回到队首。
+
 ## 0.3.16
 
 重连不再把你刚选好的 Agent 改回上一家，也不会抹掉正在流式输出的回答。

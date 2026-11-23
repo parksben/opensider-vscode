@@ -14,6 +14,12 @@ npx tsc --noEmit                     # typecheck
 
 Press F5 in VS Code to launch an Extension Development Host. Set `OPENSIDER_VSCODE_HOST` to point at a different host binary.
 
+## Release (local)
+
+Build the six target-specific VSIX files locally; each package must contain the matching Go host binary (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`, or `win32-x64`). Keep `packages/extension/package.json`'s version equal to the `v*` tag and generate `SHA256SUMS` for the six VSIX assets. Write a hand-written 2–3 line English release summary and confirm it before publishing.
+
+The tag-triggered GitHub Actions workflow is not the release path. Disable `release.yml` before pushing the tag, publish the locally built assets with `gh release create`, then re-enable the workflow.
+
 ## README screenshots
 
 The screenshots are the real side panel, not mockups. From `packages/extension`, start Vite and open `src/sidepanel/shots.html?scene=setup`, `agents`, `chat`, `composer`, `queue`, or `continue`, with `&lang=en` or `&lang=zh`. Capture at 1120×700 @2x into `packages/extension/media/readme/{en,zh}/`. That page is not packaged into the extension.
