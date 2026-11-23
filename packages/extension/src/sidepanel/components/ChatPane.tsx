@@ -16,7 +16,7 @@ import { groupModelsByPrefix, modelGroupLabel, modelShortName } from "../model-g
 import { requestBrowserProbe } from "../peer-probe";
 import { STICKY_PX, useThreadFollow } from "../thread-follow";
 import { toolFinished } from "../tool-status";
-import { lastSettled, nextStage, stageVisible, type StageState } from "../turn-stage";
+import { lastSettled, nextStage, shouldShowAwaitingStage, stageVisible, type StageState } from "../turn-stage";
 import {
   composerCarryMatches,
   decodeComposerCarry,
@@ -1309,7 +1309,7 @@ const MessageThread = memo(function MessageThread({
   const stagedId = stageVisible(messages, stage.id) ? stage.id : undefined;
   // 挂着「等待」的引导消息不算已发送：舞台与直播态要按最后一条真正发出去的消息判断。
   const settledLast = lastSettled(messages);
-  const awaitingStage = isRunning && settledLast?.role === "user";
+  const awaitingStage = shouldShowAwaitingStage(isRunning, settledLast);
   return (
     <>
       {messages.map((message, index) => {
