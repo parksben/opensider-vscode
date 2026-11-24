@@ -2,6 +2,10 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.18
+
+Streaming ACP updates are coalesced per animation frame, keeping typing and page interactions responsive during long agent turns.
+
 ## 0.3.17
 
 Unread steering messages no longer show a misleading new-turn thinking placeholder.

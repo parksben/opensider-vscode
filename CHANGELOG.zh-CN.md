@@ -2,6 +2,10 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.18
+
+流式 ACP 增量按动画帧合并，长任务运行时输入和网页交互保持流畅。
+
 ## 0.3.17
 
 引导消息尚未被 Agent 读取时，不再显示误导性的「思考中」占位。
