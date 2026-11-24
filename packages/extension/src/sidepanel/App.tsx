@@ -178,6 +178,8 @@ export function App() {
   const statusRef = useRef(status);
   const selectedIdRef = useRef(selectedId);
   const sessionsRef = useRef(sessions);
+  const streamBatchRef = useRef(new Map<string, Record<string, unknown>[]>());
+  const streamBatchFrameRef = useRef<number>(0);
   /** 在飞的会话请求（new/use/fork/prompt）：requestId ↔ 本地会话，回执按 id 精确配对。 */
   const bindRegistry = useRef(new BindRegistry());
   /** 等绑定完成后要发的首条消息（按会话存，避免两个会话互相覆盖）。 */
@@ -808,6 +810,36 @@ export function App() {
     if (steerFailure && !wasRunning) flushQueueRef.current(localId);
   };
 
+  const flushStreamBatch = () => {
+    streamBatchFrameRef.current = 0;
+    const batch = streamBatchRef.current;
+    streamBatchRef.current = new Map();
+    if (batch.size === 0) return;
+    const modelId = selectedModelRef.current;
+    const modelName =
+      models.find((item) => item.id === modelId)?.name ||
+      (!modelId || modelId === "auto" ? "Auto" : modelId);
+    batch.forEach((updates, localId) => {
+      updateSessionMessages(localId, (current) => {
+        let next = current;
+        for (const update of updates) {
+          advanceSteerBoundary(localId, update);
+          next = applyAcpUpdate(next, update, { modelId, modelName });
+        }
+        return next;
+      });
+    });
+  };
+
+  const queueStreamUpdate = (localId: string, update: Record<string, unknown>) => {
+    const batch = streamBatchRef.current;
+    const updates = batch.get(localId);
+    if (updates) updates.push(update);
+    else batch.set(localId, [update]);
+    if (streamBatchFrameRef.current) return;
+    streamBatchFrameRef.current = requestAnimationFrame(flushStreamBatch);
+  };
+
   const handleHost = (msg: HostToExt) => {
     if (msg.type === "skills") {
       setSkills(msg.items);
@@ -1228,13 +1260,17 @@ export function App() {
         setContextUsage(usage);
         return;
       }
-      advanceSteerBoundary(localId, msg.update);
-      updateSessionMessages(localId, (current) => applyAcpUpdate(current, msg.update, { modelId, modelName }));
+      queueStreamUpdate(localId, msg.update);
       return;
     }
     if (msg.type === "turn.end") {
       const localId = localIdForAcp(msg.sessionId);
       if (!localId) return;
+      if (streamBatchFrameRef.current) {
+        cancelAnimationFrame(streamBatchFrameRef.current);
+        streamBatchFrameRef.current = 0;
+      }
+      if (streamBatchRef.current.size) flushStreamBatch();
       if (msg.interrupted) {
         // 被「立即发送」顶掉的那一轮：只结算它自己，不清 running、也不 flush 队列 ——
         // 新消息已经带着 interrupt 交给 Host，新一轮正在接上来。
