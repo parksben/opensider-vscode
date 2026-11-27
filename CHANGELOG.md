@@ -2,6 +2,11 @@
 
 [中文](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.zh-CN.md)
 
+## 0.3.19
+
+Full workspace transcripts now use IndexedDB instead of synchronous localStorage.
+Streaming persistence and lifecycle ordering are corrected, and unchanged mirror flushes are deduplicated.
+
 ## 0.3.18
 
 Streaming ACP updates are coalesced per animation frame, keeping typing and page interactions responsive during long agent turns.

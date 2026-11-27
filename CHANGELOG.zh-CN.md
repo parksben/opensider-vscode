@@ -2,6 +2,11 @@
 
 [English](https://github.com/parksben/opensider-vscode/blob/main/CHANGELOG.md)
 
+## 0.3.19
+
+完整工作区历史改用 IndexedDB，避免同步 localStorage 写入阻塞面板。
+修正流式持久化与事件顺序，避免未变化的镜像重复写入。
+
 ## 0.3.18
 
 流式 ACP 增量按动画帧合并，长任务运行时输入和网页交互保持流畅。
