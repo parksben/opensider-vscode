@@ -180,6 +180,7 @@ export function App() {
   const sessionsRef = useRef(sessions);
   const streamBatchRef = useRef(new Map<string, Record<string, unknown>[]>());
   const streamBatchFrameRef = useRef<number>(0);
+  const streamBatchTimerRef = useRef<number>(0);
   /** 在飞的会话请求（new/use/fork/prompt）：requestId ↔ 本地会话，回执按 id 精确配对。 */
   const bindRegistry = useRef(new BindRegistry());
   /** 等绑定完成后要发的首条消息（按会话存，避免两个会话互相覆盖）。 */
@@ -811,7 +812,10 @@ export function App() {
   };
 
   const flushStreamBatch = () => {
+    cancelAnimationFrame(streamBatchFrameRef.current);
+    window.clearTimeout(streamBatchTimerRef.current);
     streamBatchFrameRef.current = 0;
+    streamBatchTimerRef.current = 0;
     const batch = streamBatchRef.current;
     streamBatchRef.current = new Map();
     if (batch.size === 0) return;
@@ -823,7 +827,6 @@ export function App() {
       updateSessionMessages(localId, (current) => {
         let next = current;
         for (const update of updates) {
-          advanceSteerBoundary(localId, update);
           next = applyAcpUpdate(next, update, { modelId, modelName });
         }
         return next;
@@ -838,9 +841,11 @@ export function App() {
     else batch.set(localId, [update]);
     if (streamBatchFrameRef.current) return;
     streamBatchFrameRef.current = requestAnimationFrame(flushStreamBatch);
+    streamBatchTimerRef.current = window.setTimeout(flushStreamBatch, 100);
   };
 
   const handleHost = (msg: HostToExt) => {
+    if (msg.type !== "update" && streamBatchRef.current.size) flushStreamBatch();
     if (msg.type === "skills") {
       setSkills(msg.items);
       return;
@@ -1260,6 +1265,8 @@ export function App() {
         setContextUsage(usage);
         return;
       }
+      if (steerBoundaries.current.has(localId)) flushStreamBatch();
+      advanceSteerBoundary(localId, msg.update);
       queueStreamUpdate(localId, msg.update);
       return;
     }
@@ -1412,6 +1419,12 @@ export function App() {
   const handleHostRef = useRef(handleHost);
   handleHostRef.current = handleHost;
 
+  useEffect(() => () => {
+    cancelAnimationFrame(streamBatchFrameRef.current);
+    window.clearTimeout(streamBatchTimerRef.current);
+    window.clearTimeout(persistTimer.current);
+  }, []);
+
   useEffect(() => {
     // The extension bakes the workspace identity into the document precisely so this
     // runs before the first cache read: localStorage is shared by every window of the
@@ -1455,7 +1468,7 @@ export function App() {
   /** 最近一次写出去的设置指纹：正文在流式、但设置变了时不跟着一起憋着。 */
   const persistSettingsDigest = useRef("");
   /** 立刻写一次（webview 要藏起来时用）：不走合并窗口、也不受「回合进行中」限制。 */
-  const persistFlush = useRef<() => string | undefined>(() => undefined);
+  const persistFlush = useRef<(force?: boolean) => string | undefined>(() => undefined);
   /** 面板最近一次写出去的 savedAt（ms；0 = 还没写过）——回灌镜像时用它判断新旧。 */
   const wroteAtRef = useRef(0);
   /** Host 镜像就绪后强制写一次：否则「镜像就绪」只改依赖、指纹没变，会跳过首次同步。 */
@@ -1499,9 +1512,12 @@ export function App() {
       ]),
     );
     const digest = JSON.stringify([settingsDigest, transcriptDigest]);
-    const write = () => {
+    const write = (force = false) => {
       window.clearTimeout(persistTimer.current);
       persistTimer.current = 0;
+      if (!force && digest === persistDigest.current) {
+        return hostMirrorReady ? new Date(wroteAtRef.current).toISOString() : undefined;
+      }
       const payload = toPersistedState({
         locale,
         theme,
@@ -1537,9 +1553,9 @@ export function App() {
     if (digest === persistDigest.current) return;
     // 一轮进行中：只有设置变了才写（见上面注释）；正文的变化等回合结束时再一次性写出。
     if (anyTurnRunning && settingsDigest === persistSettingsDigest.current) return;
-    const timer = window.setTimeout(write, PERSIST_DEBOUNCE_MS);
-    persistTimer.current = timer;
-    return () => window.clearTimeout(timer);
+    if (!persistTimer.current) {
+      persistTimer.current = window.setTimeout(() => persistFlush.current(), PERSIST_DEBOUNCE_MS);
+    }
   }, [
     hydrated,
     hostMirrorReady,
@@ -1571,7 +1587,7 @@ export function App() {
     }
     if (!hydrated || mirrorSeeded.current) return;
     mirrorSeeded.current = true;
-    persistFlush.current();
+    persistFlush.current(true);
   }, [hostMirrorReady, hydrated]);
 
   /** 归档请求失败后隔一分钟再试（下一轮定时检查要等 30 分钟，太久了）。 */
@@ -1640,7 +1656,7 @@ export function App() {
       runningIds: runningIdsRef.current,
     });
     if (ids.length === 0) return;
-    const savedAt = persistFlush.current();
+    const savedAt = persistFlush.current(true);
     if (!savedAt) return;
     const timer = window.setTimeout(() => {
       archiveStageRef.current = null;
@@ -1680,7 +1696,10 @@ export function App() {
   // 「回合进行中不写」会让刚跑完的那一轮卡在内存里。VS Code 的 webview 在切走 /
   // dispose 时同样触发 pagehide / visibilitychange。
   useEffect(() => {
-    const flush = () => persistFlush.current();
+    const flush = () => {
+      if (streamBatchRef.current.size) flushStreamBatch();
+      persistFlush.current();
+    };
     const onHidden = () => {
       if (document.visibilityState === "hidden") flush();
     };
@@ -1772,6 +1791,7 @@ export function App() {
   ) => {
     if (!localId) return;
     const session = sessionsRef.current.find((item) => item.id === localId);
+    if (streamBatchRef.current.size) flushStreamBatch();
     // Held steer messages are already on screen: adopt them (drop the "waiting" mark)
     // instead of appending the same text a second time.
     const heldIds = options.userIds ?? [];

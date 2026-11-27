@@ -6,12 +6,13 @@ import type { QueuedMessage } from "./queued-message";
 import { isBenignStreamCloseText, stripBenignStreamClose } from "./stream-close";
 import { stampToolParts } from "./tool-label";
 import { detectBrowserTheme, isThemePreference, readCachedTheme, type ThemePreference } from "./theme";
+import { readStateCache, writeStateCache } from "./state-cache";
 
 /** The pre-split cache key. Every window of the extension shared this one entry. */
 export const LEGACY_STATE_KEY = "opensider-vscode/state";
 
 /**
- * The hot cache lives in the webview's `localStorage`, which is shared by every window
+ * The hot cache lives in the webview's IndexedDB, which is shared by every window
  * running this extension. Unscoped, two projects fight over one entry and each window
  * shows whichever one wrote last. The workspace's absolute path is the scope: it needs
  * no hashing to be unique and stays readable in the devtools storage inspector.
@@ -613,20 +614,35 @@ export function toPersistedState(state: {
 }
 
 export async function loadState(): Promise<LoadedState> {
-  if (!cacheKey) return fromPersisted(undefined);
-  const raw = await chrome.storage.local.get(cacheKey);
-  return fromPersisted(raw[cacheKey] as PersistedState | undefined);
+  const key = cacheKey;
+  if (!key) return fromPersisted(undefined);
+  try {
+    const cached = await readStateCache<PersistedState>(key);
+    if (cached) return fromPersisted(cached);
+  } catch (error) {
+    console.warn("opensider-vscode: state cache read failed", error);
+  }
+  const raw = await chrome.storage.local.get(key);
+  const legacy = raw[key] as PersistedState | undefined;
+  if (legacy?.sessions?.length) await saveState(legacy);
+  return fromPersisted(legacy);
 }
 
-export async function saveState(payload: PersistedState): Promise<void> {
-  if (!cacheKey) return;
-  try {
-    await chrome.storage.local.set({ [cacheKey]: payload });
-  } catch (error) {
-    // chrome.storage.local 只是热缓存：写失败（配额等）不能连 Host 镜像一起停掉——
-    // 权威副本在 ~/.opensider-vscode/ui-state.json，重装后还要靠它灌回。
-    console.warn("opensider-vscode: local state write failed", error);
-  }
+let cacheWrites: Promise<void> = Promise.resolve();
+
+export function saveState(payload: PersistedState): Promise<void> {
+  const key = cacheKey;
+  if (!key) return Promise.resolve();
+  const write = async () => {
+    try {
+      await writeStateCache(key, payload);
+      await chrome.storage.local.set({ [key]: { ...payload, sessions: [], queues: undefined, deletedSessions: undefined } });
+    } catch (error) {
+      console.warn("opensider-vscode: local state write failed", error);
+    }
+  };
+  cacheWrites = cacheWrites.then(write, write);
+  return cacheWrites;
 }
 
 export function wrapAttachments(text: string, items: AttachmentItem[]): string {
